@@ -1,3 +1,4 @@
+import torch
 from .optimizer import Optimizer, required
 
 
@@ -82,7 +83,17 @@ class SGD(Optimizer):
                     continue
                 d_p = p.grad.data
                 if weight_decay != 0:
-                    d_p.add_(weight_decay, p.data)
+                    if d_p.is_sparse:
+                        state = self._get_state_for(p)
+                        state['step'] += 1
+                        b = 1 - group['lr'] * weight_decay
+                        # TODO: optimize this loop
+                        for i in d_p.indices():
+                            p.data[i] *= \
+                                b ** (state['step'] - state['last_update'][i][0])
+                            state['last_update'][i] = state['step']
+                    else:
+                        d_p.add_(weight_decay, p.data)
                 if momentum != 0:
                     param_state = self.state[p]
                     if 'momentum_buffer' not in param_state:
@@ -98,3 +109,30 @@ class SGD(Optimizer):
                 p.data.add_(-group['lr'], d_p)
 
         return loss
+
+    def _get_state_for(self, p):
+        state = self.state[p]
+        if len(state) == 0:
+            state['step'] = 0
+            state['last_update'] = torch.IntTensor(p.data.size()).zero_()
+        return state
+
+    def flush(self):
+        """Flush any pending updates to the parameters.  You should
+        call this at the end of optimization over sparse tensors.
+        """
+        for group in self.param_groups:
+            weight_decay = group['weight_decay']
+            for p in group['params']:
+                state = self._get_state_for(p)
+                d = p.data.new().resize_as_(p.data) \
+                     .fill_(1 - group['lr'] * weight_decay)
+                e = (state['step'] - state['last_update']).type_as(p.data)
+                p.data.mul_(torch.pow(d, e))
+            state['last_update'].fill_(state['step'])
+
+"""
+state is used during optimization over sparse vectors.  It records:
+    step: number of steps we've carried out so far
+    last_update: the last time we carried out a sparse update
+"""
