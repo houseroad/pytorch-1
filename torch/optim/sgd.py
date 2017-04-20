@@ -1,4 +1,5 @@
 import torch
+import math
 from .optimizer import Optimizer, required
 
 
@@ -87,11 +88,16 @@ class SGD(Optimizer):
                         state = self._get_state_for(p)
                         state['step'] += 1
                         b = 1 - group['lr'] * weight_decay
-                        # TODO: optimize this loop
-                        for i in d_p.indices():
-                            p.data[i] *= \
-                                b ** (state['step'] - state['last_update'][i][0])
-                            state['last_update'][i] = state['step']
+                        # TODO: Is this right? A little confused why
+                        # the indices here are nx1.
+                        indices = d_p.indices().squeeze()
+                        # Perform all of the delayed weight decay only
+                        # on the indices defined in d_p
+                        p_s = p.data.index_select(0, indices)
+                        d_s = (state['step'] - state['last_update'].index_select(0, indices)).type_as(p.data)
+                        p_s.mul_(torch.exp(math.log(b) * d_s))
+                        p.data.index_copy_(0, indices, p_s)
+                        state['last_update'].index_fill_(0, indices, state['step'])
                     else:
                         d_p.add_(weight_decay, p.data)
                 if momentum != 0:
@@ -125,10 +131,10 @@ class SGD(Optimizer):
             weight_decay = group['weight_decay']
             for p in group['params']:
                 state = self._get_state_for(p)
-                d = p.data.new().resize_as_(p.data) \
-                     .fill_(1 - group['lr'] * weight_decay)
-                e = (state['step'] - state['last_update']).type_as(p.data)
-                p.data.mul_(torch.pow(d, e))
+                b = 1 - group['lr'] * weight_decay
+                d = (state['step'] - state['last_update']).type_as(p.data)
+                # p *= b ** d
+                p.data.mul_(torch.exp(math.log(b) * d))
             state['last_update'].fill_(state['step'])
 
 """
