@@ -148,4 +148,4 @@ class Optimizer(object):
         """Flush any pending updates to the parameters.  You should
         call this at the end of optimization over sparse tensors.
         """
-        raise NotImplementedError
+        pass
