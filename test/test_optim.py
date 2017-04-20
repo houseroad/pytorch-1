@@ -62,9 +62,9 @@ class TestOptim(TestCase):
     def _test_rosenbrock_sparse(self, constructor):
         params_t = torch.Tensor([1.5, 1.5])
 
-        params   = Variable(torch.Tensor([1.5, 1.5]), requires_grad=True)
+        params = Variable(torch.Tensor([1.5, 1.5]), requires_grad=True)
         params_c = Variable(torch.Tensor([1.5, 1.5]), requires_grad=True)
-        optimizer   = constructor([params])
+        optimizer = constructor([params])
         optimizer_c = constructor([params_c])
 
         solution = torch.Tensor([1, 1])
