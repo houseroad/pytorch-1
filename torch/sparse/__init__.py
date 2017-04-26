@@ -138,41 +138,50 @@ class _SparseBase(object):
             self.__class__.__name__, self.indices(), self.values())
 
 
-class DoubleTensor(_SparseBase, _C.SparseDoubleTensorBase, _TensorBase):
+class SparseDoubleTensor(_SparseBase, _C.SparseDoubleTensorBase, _TensorBase):
     def is_signed(self):
         return True
 
+# NB: Define the class with Sparse in the name, so we have better error
+# messages.
+DoubleTensor = SparseDoubleTensor
 
-class FloatTensor(_SparseBase, _C.SparseFloatTensorBase, _TensorBase):
+class SparseFloatTensor(_SparseBase, _C.SparseFloatTensorBase, _TensorBase):
     def is_signed(self):
         return True
 
+FloatTensor = SparseFloatTensor
 
-class LongTensor(_SparseBase, _C.SparseLongTensorBase, _TensorBase):
+class SparseLongTensor(_SparseBase, _C.SparseLongTensorBase, _TensorBase):
     def is_signed(self):
         return True
 
+LongTensor = SparseLongTensor
 
-class IntTensor(_SparseBase, _C.SparseIntTensorBase, _TensorBase):
+class SparseIntTensor(_SparseBase, _C.SparseIntTensorBase, _TensorBase):
     def is_signed(self):
         return True
 
+IntTensor = SparseIntTensor
 
-class ShortTensor(_SparseBase, _C.SparseShortTensorBase, _TensorBase):
+class SparseShortTensor(_SparseBase, _C.SparseShortTensorBase, _TensorBase):
     def is_signed(self):
         return True
 
+ShortTensor = SparseShortTensor
 
-class CharTensor(_SparseBase, _C.SparseCharTensorBase, _TensorBase):
+class SparseCharTensor(_SparseBase, _C.SparseCharTensorBase, _TensorBase):
     def is_signed(self):
         # TODO
         return False
 
+CharTensor = SparseCharTensor
 
-class ByteTensor(_SparseBase, _C.SparseByteTensorBase, _TensorBase):
+class SparseByteTensor(_SparseBase, _C.SparseByteTensorBase, _TensorBase):
     def is_signed(self):
         return False
 
+ByteTensor = SparseByteTensor
 
 _sparse_tensor_classes.add(DoubleTensor)
 _sparse_tensor_classes.add(FloatTensor)
