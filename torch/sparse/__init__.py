@@ -134,8 +134,10 @@ class _SparseBase(object):
 
     def __str__(self):
         self.contiguous()  # to make sure the output is consistent
-        return '{} with indices:\n{}and values:\n{}'.format(
-            self.__class__.__name__, self.indices(), self.values())
+        # NB: modest duplication with _tensor_str
+        size_str = 'x'.join(str(size) for size in self.size())
+        return '{} of size {} with indices:\n{}and values:\n{}'.format(
+            self.__class__.__name__, size_str, self.indices(), self.values())
 
 
 class SparseDoubleTensor(_SparseBase, _C.SparseDoubleTensorBase, _TensorBase):
