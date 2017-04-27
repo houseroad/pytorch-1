@@ -85,7 +85,7 @@ class SGD(Optimizer):
                 d_p = p.grad.data
                 if weight_decay != 0:
                     if d_p.is_sparse:
-                        state = self._get_state_for(p)
+                        state = self.sparse_weight_decay_state(p)
                         state['step'] += 1
                         b = 1 - group['lr'] * weight_decay
                         # TODO: Is this right? A little confused why
@@ -116,12 +116,14 @@ class SGD(Optimizer):
 
         return loss
 
-    def _get_state_for(self, p):
+    def sparse_weight_decay_state(self, p):
         state = self.state[p]
-        if len(state) == 0:
-            state['step'] = 0
-            state['last_update'] = torch.IntTensor(p.data.size()).zero_()
-        return state
+        if 'sparse_weight_decay' not in state:
+            state['sparse_weight_decay'] = {
+                    'step': 0,
+                    'last_update': torch.IntTensor(p.data.size()).zero_()
+                    }
+        return state['sparse_weight_decay']
 
     def flush(self):
         """Flush any pending updates to the parameters.  You should
@@ -130,12 +132,12 @@ class SGD(Optimizer):
         for group in self.param_groups:
             weight_decay = group['weight_decay']
             for p in group['params']:
-                state = self._get_state_for(p)
+                state = self.sparse_weight_decay_state(p)
                 b = 1 - group['lr'] * weight_decay
                 d = (state['step'] - state['last_update']).type_as(p.data)
                 # p *= b ** d
                 p.data.mul_(torch.exp(math.log(b) * d))
-            state['last_update'].fill_(state['step'])
+                state['last_update'].fill_(state['step'])
 
 """
 state is used during optimization over sparse vectors.  It records:
