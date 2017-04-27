@@ -98,6 +98,7 @@ class TestOptim(TestCase):
             self.assertEqual(params.data, params_c.data)
 
         optimizer.flush()
+        optimizer.flush()
 
         self.assertLessEqual(params.data.dist(solution), initial_dist)
 
@@ -226,6 +227,9 @@ class TestOptim(TestCase):
         self._test_rosenbrock_sparse(
             lambda params: optim.SGD(params, lr=1e-3, weight_decay=1e-4)
         )
+        self._test_rosenbrock_sparse(
+            lambda params: optim.SGD(params, lr=1e-3, momentum=0.9)
+        )
 
     def test_adam(self):
         self._test_rosenbrock(
@@ -243,6 +247,11 @@ class TestOptim(TestCase):
             lambda weight, bias: optim.Adam(
                 self._build_params_dict(weight, bias, lr=1e-2),
                 lr=1e-3)
+        )
+
+    def test_adam_sparse(self):
+        self._test_rosenbrock_sparse(
+            lambda params: optim.Adam(params, lr=1e-2)
         )
 
     def test_adadelta(self):
@@ -266,6 +275,11 @@ class TestOptim(TestCase):
                 self._build_params_dict(weight, bias, rho=0.95))
         )
 
+    def test_adadelta_sparse(self):
+        self._test_rosenbrock_sparse(
+            lambda params: optim.Adadelta(params)
+        )
+
     def test_adagrad(self):
         self._test_rosenbrock(
             lambda params: optim.Adagrad(params, lr=1e-1),
@@ -287,6 +301,16 @@ class TestOptim(TestCase):
                 self._build_params_dict(weight, bias, lr=1e-2),
                 lr=1e-1)
         )
+
+    def test_adagrad_sparse(self):
+        self._test_rosenbrock_sparse(
+            lambda params: optim.Adagrad(params, lr=1e-1)
+        )
+        """
+        self._test_rosenbrock_sparse(
+            lambda params: optim.Adagrad(params, lr=1e-1, weight_decay=1e-2)
+        )
+        """
 
     def test_adamax(self):
         self._test_rosenbrock(
@@ -374,6 +398,11 @@ class TestOptim(TestCase):
             lambda weight, bias: optim.Rprop(
                 self._build_params_dict(weight, bias, lr=1e-2),
                 lr=1e-3)
+        )
+
+    def test_rprop_sparse(self):
+        self._test_rosenbrock_sparse(
+            lambda params: optim.Rprop(params, lr=1e-3)
         )
 
     def test_lbfgs(self):
