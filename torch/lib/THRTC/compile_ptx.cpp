@@ -10,9 +10,9 @@ inline void NVRTC_CHECK(nvrtcResult result)
 }
 
 void compilePTX(const char* src,
-    		const char* headers[],
-		const char* includeNames[],
-		std::vector<char>& ptx)
+                const char* headers[],
+                const char* includeNames[],
+                std::vector<char>& ptx)
 {
   nvrtcProgram program;
   NVRTC_CHECK(nvrtcCreateProgram(&program, src, NULL, 1, headers, includeNames));
@@ -63,10 +63,18 @@ void launch(const char* ptx, const char* name, void* args[], dim3 grid, dim3 blo
   CUDA_CHECK(cuModuleUnload(module));
 }
 
+/**
+ * @param state Torch CUDA state
+ * @param ptx   Pointer to buffer containing compiled ptx (from compilePTX)
+ * @param name  Name of the function in the PTX to run
+ * @param args  Arguments to pass to the function.
+ * @param grid  Grid dimensions to run with
+ * @param block Block dimensions to run with
+ */
+// NB: don't call this directly, use THC_pointwiseApply{1,2,3} instead.
 extern "C"
 void launchPTX(THCState* state, const char* ptx, const char* name, void* args[], int* grid, int* block)
 {
   cudaStream_t stream = THCState_getCurrentStream(state);
   launch(ptx, name, args, dim3(grid[0], grid[1], grid[2]), dim3(block[0], block[1], block[2]), (CUstream)stream);
 }
-
