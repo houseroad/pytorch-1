@@ -14,6 +14,7 @@ namespace torch { namespace autograd {
 std::string getOperatorName(const Operator& o) {
   switch (o._id) {
     case Operator::Id::PythonOp: return "PythonOp";
+    case Operator::Id::MapOp: return "MapOp";
   }
   __builtin_unreachable();
 }
@@ -41,6 +42,44 @@ std::string getPythonName(const PyObject* obj, bool is_legacy) {
 
 // TODO: proper pretty-printer
 
+class PExprPrinter : public PExprVisitor<PExprPrinter> {
+  std::ostream& s;
+
+public:
+  PExprPrinter(std::ostream& s) : s(s) {}
+
+  void visitPBinOp(std::shared_ptr<PBinOp> e) {
+    // TODO: elide this based on precedence
+    s << "(";
+    visitPExpr(e->lhs);
+    switch (e->op) {
+      case PBinOp::Op::Add:
+        s << " + ";
+        break;
+      case PBinOp::Op::Mul:
+        s << " * ";
+        break;
+      default:
+        __builtin_unreachable();
+    };
+    visitPExpr(e->rhs);
+    s << ")";
+  }
+  void visitPUnaryOp(std::shared_ptr<PUnaryOp> e) {
+    switch (e->op) {
+      case PUnaryOp::Op::Tanh:
+        s << "tanh";
+        break;
+      case PUnaryOp::Op::Sigmoid:
+        s << "sigmoid";
+        break;
+    }
+    s << "( ";
+    visitPExpr(e->expr);
+    s << " )";
+  }
+};
+
 class Printer : public ExprVisitor<Printer>, public OperatorVisitor<Printer> {
   std::ostream& s;
 
@@ -66,6 +105,12 @@ public:
       s << " ";
       printPyObject(scalar);
     }
+  }
+
+  void visitMapOp(std::shared_ptr<MapOp> e) {
+    s << "map [";
+    PExprPrinter(s).visitPExpr(e->fn);
+    s << "]";
   }
 
   // Instruction

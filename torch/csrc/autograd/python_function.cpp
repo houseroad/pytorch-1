@@ -1201,6 +1201,15 @@ struct TraceInterpreter
     };
   }
 
+  std::function<variable_list(variable_list)> visitMapOp(std::shared_ptr<MapOp> e) {
+    throw std::logic_error("TraceInterpreter::visitMapOp not implemented");
+    /*
+    return [e](variable_list tensor_args) {
+      // TODO
+    };
+    */
+  }
+
   // Instruction
   variable_list visitInstruction(std::shared_ptr<Instruction> i) {
     variable_list vars;

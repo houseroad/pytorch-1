@@ -124,6 +124,7 @@ struct Local {
 struct Operator {
   enum class Id {
     PythonOp,
+    MapOp,
   };
   Id _id;
   Operator(Id id) : _id(id) {}
@@ -169,6 +170,72 @@ struct PythonOp : public Operator {
     {}
 };
 
+// Miniature AST for pointwise operations
+struct PExpr {
+  enum class Id {
+    PBinOp,
+    PUnaryOp,
+  };
+  Id _id;
+  PExpr(Id id) : _id(id) {}
+};
+
+struct PBinOp : public PExpr {
+  const static Id SelfId = Id::PBinOp;
+  enum class Op {
+    Add,
+    Mul,
+  };
+  Op op;
+  std::shared_ptr<PExpr> lhs, rhs;
+  PBinOp(Op op, std::shared_ptr<PExpr> lhs, std::shared_ptr<PExpr> rhs)
+    : PExpr(SelfId)
+    , op(op)
+    , lhs(lhs)
+    , rhs(rhs)
+    {}
+};
+
+struct PUnaryOp : public PExpr {
+  const static Id SelfId = Id::PUnaryOp;
+  enum class Op {
+    Tanh,
+    Sigmoid,
+  };
+  Op op;
+  std::shared_ptr<PExpr> expr;
+  PUnaryOp(Op op, std::shared_ptr<PExpr> expr)
+    : PExpr(SelfId)
+    , op(op)
+    , expr(expr)
+    {}
+};
+
+template<typename SubType, typename ReturnType = void>
+struct PExprVisitor {
+  template <typename... T>
+  ReturnType visitPExpr(std::shared_ptr<PExpr> e, T&&... args) {
+    switch (e->_id) {
+      case PExpr::Id::PBinOp:
+        return static_cast<SubType*>(this)->visitPBinOp(std::static_pointer_cast<PBinOp>(e), args...);
+      case PExpr::Id::PUnaryOp:
+        return static_cast<SubType*>(this)->visitPUnaryOp(std::static_pointer_cast<PUnaryOp>(e), args...);
+    }
+    __builtin_unreachable();
+  }
+};
+
+// A point-wise map operator.
+struct MapOp : public Operator {
+  const static Id SelfId = Id::MapOp;
+  std::shared_ptr<PExpr> fn;
+  MapOp(std::shared_ptr<PExpr> fn)
+    : Operator(SelfId)
+    , fn(fn)
+    {}
+};
+
+
 // SubType is instance of CRTP; allows us to avoid virtual dispatch
 template<typename SubType, typename ReturnType = void>
 struct OperatorVisitor {
@@ -176,12 +243,15 @@ struct OperatorVisitor {
   // Purposely undefined, to avoid C++ thinking that we are eventually
   // going to define these (we will not.)
   ReturnType visitPythonOp(std::shared_ptr<PythonOp>, T...);
+  ReturnType visitMapOp(std::shared_ptr<MapOp>, T...);
   */
   template <typename... T>
   ReturnType visitOperator(std::shared_ptr<Operator> o, T&&... args) {
     switch (o->_id) {
       case Operator::Id::PythonOp:
         return static_cast<SubType*>(this)->visitPythonOp(std::static_pointer_cast<PythonOp>(o), args...);
+      case Operator::Id::MapOp:
+        return static_cast<SubType*>(this)->visitMapOp(std::static_pointer_cast<MapOp>(o), args...);
     }
     __builtin_unreachable();
   }
