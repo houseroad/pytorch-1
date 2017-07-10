@@ -29,6 +29,9 @@ using namespace torch;
 using namespace torch::autograd;
 using thpp::Tensor;
 
+// TODO ifdef me
+extern THCState* state;
+
 PyObject *THPFunctionClass = NULL;
 PyObject *THPStochasticFunctionClass = NULL;
 
@@ -712,8 +715,10 @@ static std::shared_ptr<Instruction> make_trace(PyObject* pyobj, PyObject *arg_ob
       PyFunctionCConv(arg_types),
       is_legacy,
       std::move(scalar_args));
+    // TODO: mappy_op is COMPLETELY BOGUS STOP DOING THIS
+    auto mappy_op = std::make_shared<MapOp>();
     // TODO: location
-    this_expr = std::make_shared<Instruction>(op, tensor_args);
+    this_expr = std::make_shared<Instruction>(mappy_op, tensor_args);
   } else {
     this_expr = nullptr;
   }
@@ -1116,6 +1121,12 @@ std::shared_ptr<PyFunction> THPFunction_asFunction(THPFunction* self)
   return std::shared_ptr<PyFunction>(&self->cdata, Decref());
 }
 
+extern "C"
+bool THCudaTensor_pointwiseApply2(THCState* state,
+                                  THCudaTensor* a,
+                                  THCudaTensor* b,
+                                  const char* op_string);
+
 namespace torch { namespace autograd {
 
 // NB: The interpreter currently lives here because it needs to call some
@@ -1202,12 +1213,19 @@ struct TraceInterpreter
   }
 
   std::function<variable_list(variable_list)> visitMapOp(std::shared_ptr<MapOp> e) {
-    throw std::logic_error("TraceInterpreter::visitMapOp not implemented");
-    /*
-    return [e](variable_list tensor_args) {
-      // TODO
+    return [e](variable_list args) {
+      // TODO: stop the hardcoded values here
+      const char* op = "x = y*2";
+      auto r = THCudaTensor_pointwiseApply2(
+                  state,
+                  (THCudaTensor*)(args[0]->data->cdata()),
+                  (THCudaTensor*)(args[1]->data->cdata()),
+                  op);
+      if (!r) {
+        throw std::logic_error("pointwiseApply2 FAILED");
+      }
+      return args; // WRONG
     };
-    */
   }
 
   // Instruction
