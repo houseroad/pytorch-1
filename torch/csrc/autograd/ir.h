@@ -228,11 +228,16 @@ struct PExprVisitor {
 // A point-wise map operator.
 struct MapOp : public Operator {
   const static Id SelfId = Id::MapOp;
+  MapOp()
+    : Operator(SelfId)
+    {}
+  /*
   std::shared_ptr<PExpr> fn;
   MapOp(std::shared_ptr<PExpr> fn)
     : Operator(SelfId)
     , fn(fn)
     {}
+    */
 };
 
 

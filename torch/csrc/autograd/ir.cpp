@@ -109,7 +109,7 @@ public:
 
   void visitMapOp(std::shared_ptr<MapOp> e) {
     s << "map [";
-    PExprPrinter(s).visitPExpr(e->fn);
+    //PExprPrinter(s).visitPExpr(e->fn);
     s << "]";
   }
 
