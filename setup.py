@@ -305,6 +305,7 @@ main_sources = [
     "torch/csrc/autograd/python_hook.cpp",
     "torch/csrc/autograd/python_ir.cpp",
     "torch/csrc/autograd/python_tracer.cpp",
+    "torch/csrc/autograd/jit/pointwise_fusion.cpp",
     "torch/csrc/autograd/functions/batch_normalization.cpp",
     "torch/csrc/autograd/functions/convolution.cpp",
     "torch/csrc/autograd/functions/basic_ops.cpp",
