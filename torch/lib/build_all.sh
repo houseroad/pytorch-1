@@ -69,6 +69,7 @@ function build() {
               -DTHS_LIBRARIES="$INSTALL_DIR/lib/libTHS$LD_POSTFIX" \
               -DTHC_LIBRARIES="$INSTALL_DIR/lib/libTHC$LD_POSTFIX" \
               -DTHCS_LIBRARIES="$INSTALL_DIR/lib/libTHCS$LD_POSTFIX" \
+              -DTHRTC_LIBRARIES="$INSTALL_DIR/lib/libRTC$LD_POSTFIX" \
               -DTH_SO_VERSION=1 \
               -DTHC_SO_VERSION=1 \
               -DTHNN_SO_VERSION=1 \
@@ -123,6 +124,7 @@ if [[ $WITH_CUDA -eq 1 ]]; then
     build THC
     build THCS
     build THCUNN
+    build THRTC
 fi
 if [[ $WITH_NCCL -eq 1 ]]; then
     build_nccl

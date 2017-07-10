@@ -3,10 +3,6 @@
 
 #include "compile_ptx.h"
 
-// Cribbed from https://github.com/szagoruyko/nvrtc.torch
-
-namespace torch { namespace rtc {
-
 inline void NVRTC_CHECK(nvrtcResult result)
 {
   if(result != NVRTC_SUCCESS)
@@ -14,9 +10,9 @@ inline void NVRTC_CHECK(nvrtcResult result)
 }
 
 void compilePTX(const char* src,
-                const char* headers[],
-                const char* includeNames[],
-                std::vector<char>& ptx)
+    		const char* headers[],
+		const char* includeNames[],
+		std::vector<char>& ptx)
 {
   nvrtcProgram program;
   NVRTC_CHECK(nvrtcCreateProgram(&program, src, NULL, 1, headers, includeNames));
@@ -74,4 +70,3 @@ void launchPTX(THCState* state, const char* ptx, const char* name, void* args[],
   launch(ptx, name, args, dim3(grid[0], grid[1], grid[2]), dim3(block[0], block[1], block[2]), (CUstream)stream);
 }
 
-}} // namespace torch::rtc
