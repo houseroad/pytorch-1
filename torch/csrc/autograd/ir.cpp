@@ -24,63 +24,6 @@ std::string getPythonName(const PyObject* obj, bool is_legacy) {
   }
 }
 
-/*
-class PExprPrinter : public PExprVisitor<PExprPrinter> {
-  std::ostream& s;
-
-public:
-  PExprPrinter(std::ostream& s) : s(s) {}
-
-  void visitPVar(std::shared_ptr<PVar> e) {
-    switch (e->var) {
-      //case PVar::Var::X:
-      //  s << "x";
-      //  break;
-      case PVar::Var::Y:
-        s << "y";
-        break;
-      case PVar::Var::Z:
-        s << "z";
-        break;
-      default:
-        __builtin_unreachable();
-    }
-  }
-  void visitPBinOp(std::shared_ptr<PBinOp> e) {
-    // TODO: elide this based on precedence
-    s << "(";
-    visitPExpr(e->lhs);
-    switch (e->op) {
-      case PBinOp::Op::Add:
-        s << " + ";
-        break;
-      case PBinOp::Op::Mul:
-        s << " * ";
-        break;
-      default:
-        __builtin_unreachable();
-    };
-    visitPExpr(e->rhs);
-    s << ")";
-  }
-  void visitPUnaryOp(std::shared_ptr<PUnaryOp> e) {
-    switch (e->op) {
-      case PUnaryOp::Op::Tanh:
-        s << "tanhf";
-        break;
-      case PUnaryOp::Op::Sigmoid:
-        // TODO: this is FLOAT only
-        s << "sigmoidf";
-        break;
-    }
-    s << "( ";
-    visitPExpr(e->expr);
-    s << " )";
-  }
-};
-*/
-
-
 // Calling convention:
 //    - Arguments are loaded into __t0, __t1, ... (to be changed soon)
 //    - Results are loaded into result0, result1, etc.
