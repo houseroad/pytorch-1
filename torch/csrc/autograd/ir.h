@@ -389,4 +389,7 @@ public:
   }
 };
 
+// TODO: Doesn't belong here
+std::string getPythonName(const PyObject* obj, bool is_legacy);
+
 }}

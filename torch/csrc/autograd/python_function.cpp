@@ -684,6 +684,19 @@ PyObject* process_outputs(THPFunction* grad_fn, const UnpackedInput& unpacked, T
   return outputs.release();
 }
 
+// Returns NULL if Python object not eligible to be a pointwise op
+static std::shared_ptr<MapOp> maybe_make_map_op(PyObject* cls, bool is_legacy, pyobj_list& scalar_args, local_list& tensor_args) {
+  auto op_name = getPythonName(cls, false);
+  // TODO: This is not sound. If someone else names their class Mul, we
+  // will claim it matches when it should not.
+  if (op_name == "Mul") {
+    return std::make_shared<MapOp>();
+  }
+  // NB: "Add" does NOT work, I believe this is because it has a special C++
+  // impl
+  return nullptr;
+}
+
 // This sort of reimplements unpack_input, but we have our own requirements
 static std::shared_ptr<Instruction> make_trace(PyObject* pyobj, PyObject *arg_objects, bool is_legacy)
 {
@@ -709,16 +722,18 @@ static std::shared_ptr<Instruction> make_trace(PyObject* pyobj, PyObject *arg_ob
         scalar_args.emplace_back(arg_object);
       }
     }
-    Py_INCREF(pyobj);
-    auto op = std::make_shared<PythonOp>(
-      THPObjectPtr(pyobj),
-      PyFunctionCConv(arg_types),
-      is_legacy,
-      std::move(scalar_args));
-    // TODO: mappy_op is COMPLETELY BOGUS STOP DOING THIS
-    auto mappy_op = std::make_shared<MapOp>();
+    std::shared_ptr<Operator> op;
+    if (op = maybe_make_map_op(pyobj, is_legacy, scalar_args, tensor_args)) {
+    } else {
+      Py_INCREF(pyobj);
+      op = std::make_shared<PythonOp>(
+            THPObjectPtr(pyobj),
+            PyFunctionCConv(arg_types),
+            is_legacy,
+            std::move(scalar_args));
+    }
     // TODO: location
-    this_expr = std::make_shared<Instruction>(mappy_op, tensor_args);
+    this_expr = std::make_shared<Instruction>(op, tensor_args);
   } else {
     this_expr = nullptr;
   }
