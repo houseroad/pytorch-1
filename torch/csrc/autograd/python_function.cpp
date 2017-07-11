@@ -1137,9 +1137,10 @@ std::shared_ptr<PyFunction> THPFunction_asFunction(THPFunction* self)
 }
 
 extern "C"
-bool THCudaTensor_pointwiseApply2(THCState* state,
+bool THCudaTensor_pointwiseApply3(THCState* state,
                                   THCudaTensor* a,
                                   THCudaTensor* b,
+                                  THCudaTensor* c,
                                   const char* op_string);
 
 namespace torch { namespace autograd {
@@ -1230,16 +1231,28 @@ struct TraceInterpreter
   std::function<variable_list(variable_list)> visitMapOp(std::shared_ptr<MapOp> e) {
     return [e](variable_list args) {
       // TODO: stop the hardcoded values here
-      const char* op = "x = y*2";
-      auto r = THCudaTensor_pointwiseApply2(
+      //throw std::logic_error("pointwiseApply2 FAILED");
+      check_input_variables("Map", args, 2);
+      auto& input1 = args[0]->data;
+      auto& input2 = args[1]->data;
+      AutoGPU guard(input1->getDevice());
+
+      auto output = input1->newTensor();
+      output->resizeAs(*input1);
+      const char* op = "x = y*z";
+      auto r = THCudaTensor_pointwiseApply3(
                   state,
-                  (THCudaTensor*)(args[0]->data->cdata()),
-                  (THCudaTensor*)(args[1]->data->cdata()),
+                  (THCudaTensor*)(output->cdata()),
+                  (THCudaTensor*)(input1->cdata()),
+                  (THCudaTensor*)(input2->cdata()),
                   op);
       if (!r) {
         throw std::logic_error("pointwiseApply2 FAILED");
       }
-      return args; // WRONG
+      return wrap_outputs(args, as_tensor_list(std::move(output)), [&](FunctionFlags f) {
+        // TODO this is wrong
+        return std::make_shared<AddBackward>(std::move(f));
+      });
     };
   }
 

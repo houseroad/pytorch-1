@@ -598,13 +598,13 @@ bool THC_pointwiseApply3(THCState* state,
 
   if (totalElements != TensorUtils<TensorTypeB>::getNumElements(state, b) ||
       totalElements != TensorUtils<TensorTypeC>::getNumElements(state, c)) {
-    return false;
+    throw std::logic_error("pointwiseApply3: tensor sizes don't match");
   }
 
   if (TensorUtils<TensorTypeA>::getDims(state, a) > MAX_CUTORCH_DIMS ||
       TensorUtils<TensorTypeB>::getDims(state, b) > MAX_CUTORCH_DIMS ||
       TensorUtils<TensorTypeC>::getDims(state, c) > MAX_CUTORCH_DIMS) {
-    return false;
+    throw std::logic_error("pointwiseApply3: dimensions are too big");
   }
 
   if (TensorUtils<TensorTypeA>::getDims(state, a) == 0) {
@@ -616,7 +616,7 @@ bool THC_pointwiseApply3(THCState* state,
 
   dim3 grid;
   if (!getApplyGrid(state, totalElements, grid)) {
-    return false;
+    throw std::logic_error("pointwiseApply3: getApplyGrid failed");
   }
 
   // If tensor args have overlapping indices and are read/write, then
