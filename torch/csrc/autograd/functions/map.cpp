@@ -102,7 +102,7 @@ auto Map::apply(const variable_list& inputs) -> variable_list {
 //    recomputing, but it is unclear when this is profitable.
 
 auto MapBackward::apply(const variable_list& grad_outputs) -> variable_list {
-  check_input_variables("AddBackward", grad_outputs, 1);
+  check_input_variables("MapBackward", grad_outputs, 1);
   return {grad_outputs[0], grad_outputs[0]};
 };
 
