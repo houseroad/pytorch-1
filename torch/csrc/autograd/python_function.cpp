@@ -690,7 +690,29 @@ static std::shared_ptr<MapOp> maybe_make_map_op(PyObject* cls, bool is_legacy, p
   // TODO: This is not sound. If someone else names their class Mul, we
   // will claim it matches when it should not.
   if (op_name == "Mul") {
-    return std::make_shared<MapOp>(std::make_shared<PBinOp>(PBinOp::Op::Mul, std::make_shared<PVar>(PVar::Var::Y), std::make_shared<PVar>(PVar::Var::Z)));
+    return std::make_shared<MapOp>(
+            std::make_shared<PBinOp>(
+              PBinOp::Op::Mul,
+              std::make_shared<PVar>(PVar::Var::Y),
+              std::make_shared<PVar>(PVar::Var::Z)
+            )
+          );
+  } else if (op_name == "Add" && PyObject_Not(scalar_args[0]) /* not inplace */) {
+    // TODO: hypothetically, inplace should work too
+    return std::make_shared<MapOp>(
+            std::make_shared<PBinOp>(
+              PBinOp::Op::Add,
+              std::make_shared<PVar>(PVar::Var::Y),
+              std::make_shared<PVar>(PVar::Var::Z)
+            )
+          );
+  } else if (op_name == "Tanh") {
+    return std::make_shared<MapOp>(
+            std::make_shared<PUnaryOp>(
+              PUnaryOp::Op::Tanh,
+              std::make_shared<PVar>(PVar::Var::Y)
+            )
+          );
   }
   // NB: "Add" does NOT work, I believe this is because it has a special C++
   // impl
@@ -1137,6 +1159,12 @@ std::shared_ptr<PyFunction> THPFunction_asFunction(THPFunction* self)
 }
 
 extern "C"
+bool THCudaTensor_pointwiseApply2(THCState* state,
+                                  THCudaTensor* a,
+                                  THCudaTensor* b,
+                                  const char* op_string);
+
+extern "C"
 bool THCudaTensor_pointwiseApply3(THCState* state,
                                   THCudaTensor* a,
                                   THCudaTensor* b,
@@ -1232,24 +1260,45 @@ struct TraceInterpreter
     return [e](variable_list args) {
       // TODO: stop the hardcoded values here
       //throw std::logic_error("pointwiseApply2 FAILED");
-      check_input_variables("Map", args, 2);
-      auto& input1 = args[0]->data;
-      auto& input2 = args[1]->data;
-      AutoGPU guard(input1->getDevice());
 
-      auto output = input1->newTensor();
-      output->resizeAs(*input1);
+      auto num_args = args.size();
+      if (num_args < 1) {
+        throw std::logic_error("cannot map over no inputs");
+      }
+      auto& arg0 = args[0]->data;
+      AutoGPU guard(arg0->getDevice());
+      // NB: This assumes that all the dimensions are the same
+      auto output = arg0->newTensor();
+      output->resizeAs(*arg0);
+
+      // TODO: sanity check: make sure that free variables of expression
+      // line up with number of inputs. (Better: have a function.)
       std::stringstream ss;
       ss << "x = ";
       printPExpr(e->fn, ss);
-      auto r = THCudaTensor_pointwiseApply3(
+
+      bool r;
+      switch (num_args) {
+        case 1:
+          r = THCudaTensor_pointwiseApply2(
                   state,
                   (THCudaTensor*)(output->cdata()),
-                  (THCudaTensor*)(input1->cdata()),
-                  (THCudaTensor*)(input2->cdata()),
+                  (THCudaTensor*)(args[0]->data->cdata()),
                   ss.str().c_str());
+          break;
+        case 2:
+          r = THCudaTensor_pointwiseApply3(
+                  state,
+                  (THCudaTensor*)(output->cdata()),
+                  (THCudaTensor*)(args[0]->data->cdata()),
+                  (THCudaTensor*)(args[1]->data->cdata()),
+                  ss.str().c_str());
+          break;
+        default:
+          throw std::logic_error("mapping over more than 2 inputs not supported yet");
+      }
       if (!r) {
-        throw std::logic_error("pointwiseApply3 FAILED");
+        throw std::logic_error("unspecified failure running fused op");
       }
       return wrap_outputs(args, as_tensor_list(std::move(output)), [&](FunctionFlags f) {
         // TODO this is wrong
