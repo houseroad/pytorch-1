@@ -5,6 +5,12 @@
 const char THCApplyRTC_cuh[] = R"(
 #define MAX_CUTORCH_DIMS 25
 
+__device__ inline
+float sigmoidf(float x) {
+  float one = 1.0;
+  return one / (one + expf(-x));
+}
+
 template <typename T, typename IndexType>
 struct TensorInfo {
   __device__ inline bool isContiguous() const {

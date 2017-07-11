@@ -713,6 +713,13 @@ static std::shared_ptr<MapOp> maybe_make_map_op(PyObject* cls, bool is_legacy, p
               std::make_shared<PVar>(PVar::Var::Y)
             )
           );
+  } else if (op_name == "Sigmoid") {
+    return std::make_shared<MapOp>(
+            std::make_shared<PUnaryOp>(
+              PUnaryOp::Op::Sigmoid,
+              std::make_shared<PVar>(PVar::Var::Y)
+            )
+          );
   }
   // NB: "Add" does NOT work, I believe this is because it has a special C++
   // impl

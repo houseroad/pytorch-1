@@ -85,10 +85,11 @@ public:
   void visitPUnaryOp(std::shared_ptr<PUnaryOp> e) {
     switch (e->op) {
       case PUnaryOp::Op::Tanh:
-        s << "tanh";
+        s << "tanhf";
         break;
       case PUnaryOp::Op::Sigmoid:
-        s << "sigmoid";
+        // TODO: this is FLOAT only
+        s << "sigmoidf";
         break;
     }
     s << "( ";
