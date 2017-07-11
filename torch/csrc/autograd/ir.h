@@ -125,6 +125,7 @@ struct Operator {
   enum class Id {
     PythonOp,
     MapOp,
+    PrimOp,
   };
   Id _id;
   Operator(Id id) : _id(id) {}
@@ -170,84 +171,28 @@ struct PythonOp : public Operator {
     {}
 };
 
-// Miniature AST for pointwise operations
-struct PExpr {
-  enum class Id {
-    PVar,
-    PBinOp,
-    PUnaryOp,
-  };
-  Id _id;
-  PExpr(Id id) : _id(id) {}
-};
-
-struct PVar : public PExpr {
-  const static Id SelfId = Id::PVar;
-  // NB: cutorch-rtc is hardcoded to only have pointwise up to
-  // three variables.  Reflect this!  By convention, X is the output
-  enum class Var {
-    Y,
-    Z,
-  };
-  Var var;
-  PVar(Var var)
-    : PExpr(SelfId)
-    , var(var)
-    {}
-};
-
-struct PBinOp : public PExpr {
-  const static Id SelfId = Id::PBinOp;
+// Primitive operators which don't have any other information
+// associated with them.
+struct PrimOp : public Operator {
+  const static Id SelfId = Id::PrimOp;
   enum class Op {
     Add,
     Mul,
-  };
-  Op op;
-  std::shared_ptr<PExpr> lhs, rhs;
-  PBinOp(Op op, std::shared_ptr<PExpr> lhs, std::shared_ptr<PExpr> rhs)
-    : PExpr(SelfId)
-    , op(op)
-    , lhs(lhs)
-    , rhs(rhs)
-    {}
-};
-
-struct PUnaryOp : public PExpr {
-  const static Id SelfId = Id::PUnaryOp;
-  enum class Op {
     Tanh,
     Sigmoid,
   };
   Op op;
-  std::shared_ptr<PExpr> expr;
-  PUnaryOp(Op op, std::shared_ptr<PExpr> expr)
-    : PExpr(SelfId)
+  PrimOp(Op op)
+    : Operator(SelfId)
     , op(op)
-    , expr(expr)
     {}
-};
-
-template<typename SubType, typename ReturnType = void>
-struct PExprVisitor {
-  template <typename... T>
-  ReturnType visitPExpr(std::shared_ptr<PExpr> e, T&&... args) {
-    switch (e->_id) {
-      case PExpr::Id::PBinOp:
-        return static_cast<SubType*>(this)->visitPBinOp(std::static_pointer_cast<PBinOp>(e), args...);
-      case PExpr::Id::PUnaryOp:
-        return static_cast<SubType*>(this)->visitPUnaryOp(std::static_pointer_cast<PUnaryOp>(e), args...);
-      case PExpr::Id::PVar:
-        return static_cast<SubType*>(this)->visitPVar(std::static_pointer_cast<PVar>(e), args...);
-    }
-    __builtin_unreachable();
-  }
 };
 
 // A point-wise map operator.
 struct MapOp : public Operator {
   const static Id SelfId = Id::MapOp;
-  std::shared_ptr<PExpr> fn;
-  MapOp(std::shared_ptr<PExpr> fn)
+  std::shared_ptr<Expr> fn;
+  MapOp(std::shared_ptr<Expr> fn)
     : Operator(SelfId)
     , fn(fn)
     {}
@@ -270,6 +215,8 @@ struct OperatorVisitor {
         return static_cast<SubType*>(this)->visitPythonOp(std::static_pointer_cast<PythonOp>(o), args...);
       case Operator::Id::MapOp:
         return static_cast<SubType*>(this)->visitMapOp(std::static_pointer_cast<MapOp>(o), args...);
+      case Operator::Id::PrimOp:
+        return static_cast<SubType*>(this)->visitPrimOp(std::static_pointer_cast<PrimOp>(o), args...);
     }
     __builtin_unreachable();
   }
@@ -324,6 +271,7 @@ struct Expr {
 // all the bindings in a giant vector.
 struct Bind {
   local_list lvals;
+  // TODO: remove the shared_ptr here
   std::shared_ptr<Instruction> rval;
   Bind(local_list lvals, std::shared_ptr<Instruction> rval)
     : lvals(lvals)
@@ -378,9 +326,9 @@ struct ExprVisitor {
   }
 };
 
-void printPExpr(std::shared_ptr<PExpr>, std::ostream& s);
 void printExpr(std::shared_ptr<Expr>);
 void printExpr(std::shared_ptr<Expr>, std::ostream& s);
+void printCudaExpr(std::shared_ptr<Expr>, std::ostream& s);
 
 // --------------------------------------------------------------------
 // IR builder

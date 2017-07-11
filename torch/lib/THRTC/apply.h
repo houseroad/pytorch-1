@@ -5,10 +5,24 @@
 const char THCApplyRTC_cuh[] = R"(
 #define MAX_CUTORCH_DIMS 25
 
+// TODO: dedupe these with THC proper
+
 __device__ inline
-float sigmoidf(float x) {
+void prim_mul(float x, float y, float& r) {
+  r = x * y;
+}
+__device__ inline
+void prim_add(float x, float y, float& r) {
+  r = x + y;
+}
+__device__ inline
+void prim_tanh(float x, float& r) {
+  r = tanh(x);
+}
+__device__ inline
+void prim_sigmoid(float x, float& r) {
   float one = 1.0;
-  return one / (one + expf(-x));
+  r = one / (one + expf(-x));
 }
 
 template <typename T, typename IndexType>

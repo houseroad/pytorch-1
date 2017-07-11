@@ -11,22 +11,6 @@
 
 namespace torch { namespace autograd {
 
-std::string getOperatorName(const Operator& o) {
-  switch (o._id) {
-    case Operator::Id::PythonOp: return "PythonOp";
-    case Operator::Id::MapOp: return "MapOp";
-  }
-  __builtin_unreachable();
-}
-
-std::string getExprName(const Expr& expr) {
-  switch (expr._id) {
-    case Expr::Id::Let: return "Let";
-    case Expr::Id::Tuple: return "Tuple";
-  }
-  __builtin_unreachable();
-}
-
 std::string getPythonName(const PyObject* obj, bool is_legacy) {
   AutoGIL gil;
   if (is_legacy) {
@@ -40,8 +24,7 @@ std::string getPythonName(const PyObject* obj, bool is_legacy) {
   }
 }
 
-// TODO: proper pretty-printer
-
+/*
 class PExprPrinter : public PExprVisitor<PExprPrinter> {
   std::ostream& s;
 
@@ -50,11 +33,9 @@ public:
 
   void visitPVar(std::shared_ptr<PVar> e) {
     switch (e->var) {
-      /*
-      case PVar::Var::X:
-        s << "x";
-        break;
-        */
+      //case PVar::Var::X:
+      //  s << "x";
+      //  break;
       case PVar::Var::Y:
         s << "y";
         break;
@@ -97,6 +78,109 @@ public:
     s << " )";
   }
 };
+*/
+
+
+// Calling convention:
+//    - Arguments are loaded into __t0, __t1, ... (to be changed soon)
+//    - Results are loaded into result0, result1, etc.
+class CudaPrinter : public ExprVisitor<CudaPrinter>, public OperatorVisitor<CudaPrinter> {
+  std::ostream& s;
+
+public:
+  CudaPrinter(std::ostream& s) : s(s) {}
+
+  void visitLocal(std::shared_ptr<Local> a) {
+    s << "__t" << a->unique;
+  }
+
+  // Operator
+  void visitPythonOp(std::shared_ptr<PythonOp> e) {
+    throw std::logic_error("cannot print PythonOp to CUDA");
+  }
+
+  void visitMapOp(std::shared_ptr<MapOp> e) {
+    throw std::logic_error("cannot print MapOp to CUDA");
+  }
+
+  void visitPrimOp(std::shared_ptr<PrimOp> e) {
+    switch (e->op) {
+      case PrimOp::Op::Add:
+        s << "prim_add";
+        break;
+      case PrimOp::Op::Mul:
+        s << "prim_mul";
+        break;
+      case PrimOp::Op::Sigmoid:
+        s << "prim_sigmoid";
+        break;
+      case PrimOp::Op::Tanh:
+        s << "prim_tanh";
+        break;
+      default:
+        __builtin_unreachable();
+    }
+  }
+
+  // Instruction
+  void visitInstruction(std::shared_ptr<Instruction> i) {
+    visitOperator(i->op);
+    s << "(";
+    bool first = true;
+    for (auto& l : i->args) {
+      if (!first) {
+        s << ", ";
+      } else {
+        first = false;
+      }
+      visitLocal(l);
+    }
+    s << ")";
+  }
+
+  // Expr
+  void visitLet(std::shared_ptr<Let> e) {
+    // Instruction
+    for (auto l : e->bind.lvals) {
+      // This is a special-case, needs to be generalized
+      s << "float ";
+      visitLocal(l);
+      s << ";" << std::endl;
+    }
+    visitOperator(e->bind.rval->op);
+    s << "(";
+    bool first = true;
+    for (auto r : e->bind.rval->args) {
+      if (first) {
+        first = false;
+      } else {
+        s << ", ";
+      }
+      visitLocal(r);
+    }
+    for (auto l : e->bind.lvals) {
+      if (first) {
+        first = false;
+      } else {
+        s << ", ";
+      }
+      visitLocal(l);
+    }
+    s << ");" << std::endl;
+    visitExpr(e->expr);
+  }
+  void visitTuple(std::shared_ptr<Tuple> e) {
+    int i = 0;
+    for (auto l : e->locals) {
+      s << "result" << i << " = ";
+      visitLocal(l);
+      s << ";" << std::endl;
+      i++;
+    }
+  }
+};
+
+// TODO: proper pretty-printer
 
 class Printer : public ExprVisitor<Printer>, public OperatorVisitor<Printer> {
   std::ostream& s;
@@ -127,8 +211,30 @@ public:
 
   void visitMapOp(std::shared_ptr<MapOp> e) {
     s << "map [";
-    PExprPrinter(s).visitPExpr(e->fn);
+    // TODO: increase indentation
+    //visitExpr(e->fn);
+    CudaPrinter(s).visitExpr(e->fn);
     s << "]";
+  }
+
+  void visitPrimOp(std::shared_ptr<PrimOp> e) {
+    s << "prim ";
+    switch (e->op) {
+      case PrimOp::Op::Add:
+        s << "Add";
+        break;
+      case PrimOp::Op::Mul:
+        s << "Mul";
+        break;
+      case PrimOp::Op::Sigmoid:
+        s << "Sigmoid";
+        break;
+      case PrimOp::Op::Tanh:
+        s << "Tanh";
+        break;
+      default:
+        __builtin_unreachable();
+    }
   }
 
   // Instruction
@@ -184,8 +290,8 @@ void printExpr(std::shared_ptr<Expr> e, std::ostream& s) {
   Printer(s).visitExpr(e);
 }
 
-void printPExpr(std::shared_ptr<PExpr> e, std::ostream& s) {
-  PExprPrinter(s).visitPExpr(e);
+void printCudaExpr(std::shared_ptr<Expr> e, std::ostream& s) {
+  CudaPrinter(s).visitExpr(e);
 }
 
 }}

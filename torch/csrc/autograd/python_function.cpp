@@ -688,14 +688,20 @@ static std::shared_ptr<MapOp> maybe_make_map_op(PyObject* cls, bool is_legacy, p
   // TODO: This is not sound. If someone else names their class Mul, we
   // will claim it matches when it should not.
   if (op_name == "Mul") {
-    return std::make_shared<MapOp>(
-            std::make_shared<PBinOp>(
-              PBinOp::Op::Mul,
-              std::make_shared<PVar>(PVar::Var::Y),
-              std::make_shared<PVar>(PVar::Var::Z)
-            )
-          );
-  } else if (op_name == "Add" && PyObject_Not(scalar_args[0]) /* not inplace */) {
+    auto fn = std::make_shared<Let>(
+            Bind({std::make_shared<Local>(2)},
+                std::make_shared<Instruction>(
+                    std::make_shared<PrimOp>(
+                      PrimOp::Op::Mul
+                    ),
+                    local_list{std::make_shared<Local>(0), std::make_shared<Local>(1)}
+                )
+            ),
+            std::make_shared<Tuple>(local_list{std::make_shared<Local>(2)})
+           );
+    return std::make_shared<MapOp>(fn);
+  /*
+  } else if (op_name == "Add" && PyObject_Not(scalar_args[0])) { // not inplace
     // TODO: hypothetically, inplace should work too
     return std::make_shared<MapOp>(
             std::make_shared<PBinOp>(
@@ -718,6 +724,7 @@ static std::shared_ptr<MapOp> maybe_make_map_op(PyObject* cls, bool is_legacy, p
               std::make_shared<PVar>(PVar::Var::Y)
             )
           );
+  */
   }
   // NB: "Add" does NOT work, I believe this is because it has a special C++
   // impl
@@ -750,7 +757,7 @@ static std::shared_ptr<Instruction> make_trace(PyObject* pyobj, PyObject *arg_ob
       }
     }
     std::shared_ptr<Operator> op;
-    if (op = maybe_make_map_op(pyobj, is_legacy, scalar_args, tensor_args)) {
+    if ((op = maybe_make_map_op(pyobj, is_legacy, scalar_args, tensor_args))) {
     } else {
       Py_INCREF(pyobj);
       op = std::make_shared<PythonOp>(
@@ -1253,6 +1260,13 @@ struct TraceInterpreter
       // TODO: stop using stateful objects to represent operations, it's
       // not IR friendly!
       return Map(e->fn).apply(args);
+    };
+  }
+
+  std::function<variable_list(variable_list)> visitPrimOp(std::shared_ptr<PrimOp> e) {
+    return [e](variable_list tensor_args) {
+      throw std::logic_error("primop not yet supported");
+      return tensor_args; // type inference only
     };
   }
 

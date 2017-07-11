@@ -7,8 +7,8 @@
 namespace torch { namespace autograd {
 
 struct Map : public Function {
-  std::shared_ptr<PExpr> fn;
-  Map(std::shared_ptr<PExpr> fn)
+  std::shared_ptr<Expr> fn;
+  Map(std::shared_ptr<Expr> fn)
     : fn(fn)
     {}
 

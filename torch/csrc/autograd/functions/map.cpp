@@ -47,8 +47,18 @@ auto Map::apply(const variable_list& inputs) -> variable_list {
   // TODO: sanity check: make sure that free variables of expression
   // line up with number of inputs. (Better: have a function.)
   std::stringstream ss;
-  ss << "x = ";
-  printPExpr(fn, ss);
+  /*
+  for (int i = 0; i < num_inputs; i++) {
+    ss << "auto __t" << i << " = y;" << std::endl;
+  }
+  */
+  ss << "float result0;" << std::endl;
+  if (num_inputs > 0) ss << "float __t0 = y;" << std::endl;
+  if (num_inputs > 1) ss << "float __t1 = z;" << std::endl;
+  if (num_inputs > 2) throw std::logic_error("too many inputs");
+  printCudaExpr(fn, ss);
+  // NB: one output only atm!
+  ss << "x = result0;" << std::endl;
 
   bool r;
   switch (num_inputs) {
