@@ -16,8 +16,12 @@ struct Map : public Function {
 };
 
 struct MapBackward : public Function {
-  MapBackward(FunctionFlags&& flags)
-    : Function(std::move(flags)) {}
+  std::vector<SavedVariable> saved_inputs;
+
+  MapBackward(FunctionFlags&& flags,
+              std::vector<SavedVariable>&& saved_inputs)
+    : Function(std::move(flags))
+    , saved_inputs(std::move(saved_inputs)) {}
 
   virtual variable_list apply(const variable_list& gradOutputs) override;
 };
