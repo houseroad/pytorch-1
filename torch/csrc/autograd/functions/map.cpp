@@ -30,6 +30,10 @@ namespace torch { namespace autograd {
 
 // TODO: this is not init'ed yet
 
+// Needs to be done on functions, not expressions!
+// static std::shared_ptr<Expr> derivative(std::shared_ptr<Expr> e) {
+//}
+
 auto Map::apply(const variable_list& inputs) -> variable_list {
 
   auto num_inputs = inputs.size();
