@@ -211,7 +211,7 @@ public:
     visitExpr(e->expr);
   }
   void visitTuple(std::shared_ptr<Tuple> e) {
-    s << "(";
+    s << "ret (";
     bool first = true;
     for (auto l : e->locals) {
       if (first) {
@@ -222,6 +222,24 @@ public:
       visitLocal(l);
     }
     s << ")";
+  }
+
+  // Graph
+  void visitGraph(std::shared_ptr<Graph> g) {
+    s << "graph";
+    bool first = true;
+    for (auto& l : g->params) {
+      if (first) {
+        s << " ";
+      } else {
+        s << ", ";
+      }
+      visitLocal(l);
+    }
+    s << " {" << std::endl;
+    visitExpr(g->body);
+    s << std::endl;
+    s << "}";
   }
 };
 
@@ -235,6 +253,10 @@ void printExpr(std::shared_ptr<Expr> e, std::ostream& s) {
 
 void printCudaExpr(std::shared_ptr<Expr> e, std::ostream& s) {
   CudaPrinter(s).visitExpr(e);
+}
+
+void printGraph(std::shared_ptr<Graph> e, std::ostream& s) {
+  Printer(s).visitGraph(e);
 }
 
 }}
