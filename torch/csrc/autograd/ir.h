@@ -173,11 +173,27 @@ struct PythonOp : public Operator {
 // Miniature AST for pointwise operations
 struct PExpr {
   enum class Id {
+    PVar,
     PBinOp,
     PUnaryOp,
   };
   Id _id;
   PExpr(Id id) : _id(id) {}
+};
+
+struct PVar : public PExpr {
+  const static Id SelfId = Id::PVar;
+  // NB: cutorch-rtc is hardcoded to only have pointwise up to
+  // three variables.  Reflect this!  By convention, X is the output
+  enum class Var {
+    Y,
+    Z,
+  };
+  Var var;
+  PVar(Var var)
+    : PExpr(SelfId)
+    , var(var)
+    {}
 };
 
 struct PBinOp : public PExpr {
@@ -220,6 +236,8 @@ struct PExprVisitor {
         return static_cast<SubType*>(this)->visitPBinOp(std::static_pointer_cast<PBinOp>(e), args...);
       case PExpr::Id::PUnaryOp:
         return static_cast<SubType*>(this)->visitPUnaryOp(std::static_pointer_cast<PUnaryOp>(e), args...);
+      case PExpr::Id::PVar:
+        return static_cast<SubType*>(this)->visitPVar(std::static_pointer_cast<PVar>(e), args...);
     }
     __builtin_unreachable();
   }
@@ -228,16 +246,11 @@ struct PExprVisitor {
 // A point-wise map operator.
 struct MapOp : public Operator {
   const static Id SelfId = Id::MapOp;
-  MapOp()
-    : Operator(SelfId)
-    {}
-  /*
   std::shared_ptr<PExpr> fn;
   MapOp(std::shared_ptr<PExpr> fn)
     : Operator(SelfId)
     , fn(fn)
     {}
-    */
 };
 
 
@@ -365,6 +378,7 @@ struct ExprVisitor {
   }
 };
 
+void printPExpr(std::shared_ptr<PExpr>, std::ostream& s);
 void printExpr(std::shared_ptr<Expr>);
 void printExpr(std::shared_ptr<Expr>, std::ostream& s);
 

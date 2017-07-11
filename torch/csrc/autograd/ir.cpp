@@ -48,6 +48,23 @@ class PExprPrinter : public PExprVisitor<PExprPrinter> {
 public:
   PExprPrinter(std::ostream& s) : s(s) {}
 
+  void visitPVar(std::shared_ptr<PVar> e) {
+    switch (e->var) {
+      /*
+      case PVar::Var::X:
+        s << "x";
+        break;
+        */
+      case PVar::Var::Y:
+        s << "y";
+        break;
+      case PVar::Var::Z:
+        s << "z";
+        break;
+      default:
+        __builtin_unreachable();
+    }
+  }
   void visitPBinOp(std::shared_ptr<PBinOp> e) {
     // TODO: elide this based on precedence
     s << "(";
@@ -109,7 +126,7 @@ public:
 
   void visitMapOp(std::shared_ptr<MapOp> e) {
     s << "map [";
-    //PExprPrinter(s).visitPExpr(e->fn);
+    PExprPrinter(s).visitPExpr(e->fn);
     s << "]";
   }
 
@@ -164,6 +181,10 @@ void printExpr(std::shared_ptr<Expr> e) {
 
 void printExpr(std::shared_ptr<Expr> e, std::ostream& s) {
   Printer(s).visitExpr(e);
+}
+
+void printPExpr(std::shared_ptr<PExpr> e, std::ostream& s) {
+  PExprPrinter(s).visitPExpr(e);
 }
 
 }}

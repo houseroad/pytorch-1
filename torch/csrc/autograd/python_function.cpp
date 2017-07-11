@@ -690,7 +690,7 @@ static std::shared_ptr<MapOp> maybe_make_map_op(PyObject* cls, bool is_legacy, p
   // TODO: This is not sound. If someone else names their class Mul, we
   // will claim it matches when it should not.
   if (op_name == "Mul") {
-    return std::make_shared<MapOp>();
+    return std::make_shared<MapOp>(std::make_shared<PBinOp>(PBinOp::Op::Mul, std::make_shared<PVar>(PVar::Var::Y), std::make_shared<PVar>(PVar::Var::Z)));
   }
   // NB: "Add" does NOT work, I believe this is because it has a special C++
   // impl
@@ -1239,15 +1239,17 @@ struct TraceInterpreter
 
       auto output = input1->newTensor();
       output->resizeAs(*input1);
-      const char* op = "x = y*z";
+      std::stringstream ss;
+      ss << "x = ";
+      printPExpr(e->fn, ss);
       auto r = THCudaTensor_pointwiseApply3(
                   state,
                   (THCudaTensor*)(output->cdata()),
                   (THCudaTensor*)(input1->cdata()),
                   (THCudaTensor*)(input2->cdata()),
-                  op);
+                  ss.str().c_str());
       if (!r) {
-        throw std::logic_error("pointwiseApply2 FAILED");
+        throw std::logic_error("pointwiseApply3 FAILED");
       }
       return wrap_outputs(args, as_tensor_list(std::move(output)), [&](FunctionFlags f) {
         // TODO this is wrong
