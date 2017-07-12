@@ -85,9 +85,9 @@ auto Map::apply(const variable_list& inputs) -> variable_list {
   }
   */
   ss << "float result0;" << std::endl;
-  if (num_inputs > 0) ss << "float __t0 = x1;" << std::endl;
-  if (num_inputs > 1) ss << "float __t1 = x2;" << std::endl;
-  if (num_inputs > 2) throw std::logic_error("too many inputs");
+  for (int i = 0; i < num_inputs; i++) {
+    ss << "float __t" << i << " = x" << i + 1 << ";" << std::endl;
+  }
   printCudaExpr(fn, ss);
   // NB: one output only atm!
   ss << "x0 = result0;" << std::endl;
