@@ -699,7 +699,10 @@ static std::shared_ptr<MapOp> maybe_make_map_op(PyObject* cls, bool is_legacy, p
             ),
             std::make_shared<Tuple>(local_list{std::make_shared<Local>(2)})
            );
-    return std::make_shared<MapOp>(fn);
+    auto g = std::make_shared<Graph>(
+                local_list{std::make_shared<Local>(0), std::make_shared<Local>(1)},
+                fn);
+    return std::make_shared<MapOp>(g);
   /*
   } else if (op_name == "Add" && PyObject_Not(scalar_args[0])) { // not inplace
     // TODO: hypothetically, inplace should work too

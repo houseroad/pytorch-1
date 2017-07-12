@@ -84,13 +84,13 @@ auto Map::apply(const variable_list& inputs) -> variable_list {
     ss << "auto __t" << i << " = y;" << std::endl;
   }
   */
-  ss << "float result0;" << std::endl;
-  for (int i = 0; i < num_inputs; i++) {
-    ss << "float __t" << i << " = x" << i + 1 << ";" << std::endl;
+  // impedance mismatch
+  for (size_t i = 0; i < num_inputs; i++) {
+    ss << "float input" << i << " = x" << i + 1 << ";" << std::endl;
   }
-  printCudaExpr(fn, ss);
+  printCudaGraph(fn, ss);
   // NB: one output only atm!
-  ss << "x0 = result0;" << std::endl;
+  ss << "x0 = output0;" << std::endl;
 
   bool r;
   std::vector<THCudaTensor*> ts;

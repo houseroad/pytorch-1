@@ -115,11 +115,23 @@ public:
   void visitTuple(std::shared_ptr<Tuple> e) {
     int i = 0;
     for (auto l : e->locals) {
-      s << "result" << i << " = ";
+      s << "float output" << i << " = ";
       visitLocal(l);
       s << ";" << std::endl;
       i++;
     }
+  }
+
+  // Graph
+  void visitGraph(std::shared_ptr<Graph> g) {
+    int i = 0;
+    for (auto l : g->params) {
+      s << "float ";
+      visitLocal(l);
+      s << " = " << "input" << i << ";" << std::endl;
+      i++;
+    }
+    visitExpr(g->body);
   }
 };
 
@@ -156,7 +168,7 @@ public:
     s << "map [";
     // TODO: increase indentation
     //visitExpr(e->fn);
-    CudaPrinter(s).visitExpr(e->fn);
+    CudaPrinter(s).visitGraph(e->fn);
     s << "]";
   }
 
@@ -251,8 +263,8 @@ void printExpr(std::shared_ptr<Expr> e, std::ostream& s) {
   Printer(s).visitExpr(e);
 }
 
-void printCudaExpr(std::shared_ptr<Expr> e, std::ostream& s) {
-  CudaPrinter(s).visitExpr(e);
+void printCudaGraph(std::shared_ptr<Graph> e, std::ostream& s) {
+  CudaPrinter(s).visitGraph(e);
 }
 
 void printGraph(std::shared_ptr<Graph> e, std::ostream& s) {

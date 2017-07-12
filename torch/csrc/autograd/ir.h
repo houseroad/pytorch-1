@@ -83,6 +83,8 @@ struct Instruction;
 // until you get to the end.  It's not very efficient.
 struct Expr;
 
+struct Graph;
+
 // There are a bunch of ways to think about this IR, depending on your
 // background.
 //
@@ -191,8 +193,8 @@ struct PrimOp : public Operator {
 // A point-wise map operator.
 struct MapOp : public Operator {
   const static Id SelfId = Id::MapOp;
-  std::shared_ptr<Expr> fn;
-  MapOp(std::shared_ptr<Expr> fn)
+  std::shared_ptr<Graph> fn;
+  MapOp(std::shared_ptr<Graph> fn)
     : Operator(SelfId)
     , fn(fn)
     {}
@@ -328,7 +330,7 @@ struct ExprVisitor {
 
 void printExpr(std::shared_ptr<Expr>);
 void printExpr(std::shared_ptr<Expr>, std::ostream& s);
-void printCudaExpr(std::shared_ptr<Expr>, std::ostream& s);
+void printCudaGraph(std::shared_ptr<Graph>, std::ostream& s);
 
 // --------------------------------------------------------------------
 // Graphs (i.e., functions, i.e., lambda expressions)
