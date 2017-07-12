@@ -26,13 +26,41 @@ bool THCudaTensor_pointwiseApply3(THCState* state,
                                   THCudaTensor* c,
                                   const char* op_string);
 
+extern "C"
+bool THCudaTensor_pointwiseApplyMany(THCState* state,
+                                  THCudaTensor** ts,
+                                  int n_ts,
+                                  const char* op_string);
+
+
 namespace torch { namespace autograd {
 
 // TODO: this is not init'ed yet
 
-// Needs to be done on functions, not expressions!
-// static std::shared_ptr<Expr> derivative(std::shared_ptr<Expr> e) {
-//}
+/*
+struct Linearize
+  : public ExprVisitor<Differentiate, std::shared_ptr<Graph>>
+{
+}
+
+struct Differentiate
+  : public ExprVisitor<Differentiate, std::shared_ptr<Graph>>
+  , public OperatorVisitor<Differentiate>
+{
+  // Expr
+  std::shared_ptr<Graph> visitTuple(std::shared_ptr<Tuple> e, std::shared_ptr<Expr> r) {
+    return std::make_shared<Graph>(e->locals, r);
+  }
+  std::shared_ptr<Graph> visitLet(std::shared_ptr<Let> e, std::shared_ptr<Expr> r) {
+    e
+    // TODO
+  }
+};
+*/
+
+static std::shared_ptr<Graph> differentiate(std::shared_ptr<Graph> e) {
+  return e;
+}
 
 auto Map::apply(const variable_list& inputs) -> variable_list {
 
@@ -57,34 +85,25 @@ auto Map::apply(const variable_list& inputs) -> variable_list {
   }
   */
   ss << "float result0;" << std::endl;
-  if (num_inputs > 0) ss << "float __t0 = y;" << std::endl;
-  if (num_inputs > 1) ss << "float __t1 = z;" << std::endl;
+  if (num_inputs > 0) ss << "float __t0 = x1;" << std::endl;
+  if (num_inputs > 1) ss << "float __t1 = x2;" << std::endl;
   if (num_inputs > 2) throw std::logic_error("too many inputs");
   printCudaExpr(fn, ss);
   // NB: one output only atm!
-  ss << "x = result0;" << std::endl;
+  ss << "x0 = result0;" << std::endl;
 
   bool r;
-  switch (num_inputs) {
-    case 1:
-      // TODO: This only works with Floats at the moment!
-      r = THCudaTensor_pointwiseApply2(
-              state,
-              (THCudaTensor*)(output->cdata()),
-              (THCudaTensor*)(inputs[0]->data->cdata()),
-              ss.str().c_str());
-      break;
-    case 2:
-      r = THCudaTensor_pointwiseApply3(
-              state,
-              (THCudaTensor*)(output->cdata()),
-              (THCudaTensor*)(inputs[0]->data->cdata()),
-              (THCudaTensor*)(inputs[1]->data->cdata()),
-              ss.str().c_str());
-      break;
-    default:
-      throw std::logic_error("mapping over more than 2 inputs not supported yet");
+  std::vector<THCudaTensor*> ts;
+  ts.push_back((THCudaTensor*)(output->cdata()));
+  for (auto& input : inputs) {
+    ts.push_back((THCudaTensor*)(input->data->cdata()));
   }
+
+  r = THCudaTensor_pointwiseApplyMany(
+          state,
+          ts.data(),
+          num_inputs + 1,
+          ss.str().c_str());
   if (!r) {
     throw std::logic_error("unspecified failure running fused op");
   }

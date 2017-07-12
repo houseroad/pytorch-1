@@ -2,6 +2,7 @@
 #include <memory>
 #include <unordered_map>
 #include <iostream>
+#include <sstream>
 #include <type_traits>
 #include <cuda_fp16.h>
 
@@ -16,6 +17,18 @@ struct ApplyHash {
   std::string index_type;
   std::string ta_type;
   int dim;
+
+  ApplyHash(std::string op, std::string ta_type, std::string index_type, const std::vector<int>& dims) :
+    op(op),
+    ta_type(ta_type),
+    index_type(index_type),
+    dim(0)
+  {
+    for (auto it = dims.rbegin(); it != dims.rend(); it++) {
+      dim *= 64;
+      dim += *it;
+    }
+  }
 
   ApplyHash(std::string op, std::string ta_type, std::string index_type, int Adim) :
     op(op),
@@ -89,8 +102,169 @@ const char* getTypeString()
   return "";
 }
 
+template <typename T, typename IndexType>
+void kernelPointwiseApplyManyRTC(
+    TensorInfo<T, IndexType>* infos,
+    const char* op,
+    IndexType totalElements,
+    dim3 grid, dim3 block,
+    std::vector<int> dims,
+    cudaStream_t stream)
+{
+  // using c++11 std::is_same here
+  const char* index_type = getTypeString<IndexType>();
+  const char* t_type = getTypeString<T>();
+  std::stringstream ss;
+  ss << "#include <THCApplyRTC.cuh>\n";
+  ss << "typedef " << t_type << " T;\n";
+  ss << "typedef " << index_type << " IndexType;\n";
+  ss << "extern \"C\" __global__\n";
+  ss << "void kernel(";
+  for (int i = 0; i < dims.size(); i++) {
+    ss << "TensorInfo<T, IndexType> t" << i << ", ";
+  }
+  ss << "IndexType totalElements) {\n";
+  ss << "  for (IndexType i = blockIdx.x * blockDim.x + threadIdx.x;\n";
+  ss << "       i < totalElements;\n";
+  ss << "       i += gridDim.x * blockDim.x) {\n";
+  for (int i = 0; i < dims.size(); i++) {
+    ss << "  T& x" << i << " = t" << i
+       << ".data[IndexToOffset<T, IndexType, " << dims[i]
+       << ">::get(i, t" << i << ")];\n";
+  }
+  ss << op;
+  ss << "   \n";
+  ss << "   }\n";
+  ss << "}\n";
+  const char *headers[] = {THCApplyRTC_cuh};
+  const char *includeNames[] = {"THCApplyRTC.cuh"};
+
+  std::cout << ss.str();
+
+  PTXPtr ptx;
+  ApplyHash hash(op, t_type, index_type, dims);
+  auto found_hash = applycache.find(hash);
+  if(found_hash == applycache.end())
+  {
+    ptx = PTXPtr(new PTX());
+    compilePTX(ss.str().c_str(), headers, includeNames, *ptx);
+    applycache.emplace(hash, ptx);
+  }
+  else
+    ptx = found_hash->second;
+
+  std::vector<void*> args;
+  for (int i = 0; i < dims.size(); i++) {
+    args.push_back((void*)&infos[i]);
+  }
+  args.push_back((void*)&totalElements);
+  launch(ptx->data(), "kernel", args.data(), grid, block, (CUstream)stream);
+}
+
+template <typename TensorType>
+bool THC_pointwiseApplyMany(THCState* state,
+                         TensorType** ts,
+                         int n_ts,
+                         const char* op_string) {
+  auto stream = THCState_getCurrentStream(state);
+  long totalElements = TensorUtils<TensorType>::getNumElements(state, ts[0]);
+
+  for (int i = 1; i < n_ts; i++) {
+    if (totalElements != TensorUtils<TensorType>::getNumElements(state, ts[i])) {
+      return false;
+    }
+  }
+
+  for (int i = 0; i < n_ts; i++) {
+    if (TensorUtils<TensorType>::getDims(state, ts[i]) > MAX_CUTORCH_DIMS) {
+      return false;
+    }
+  }
+
+  if (TensorUtils<TensorType>::getDims(state, ts[0]) == 0) {
+    // Zero-dim tensor; do nothing
+    return true;
+  }
+
+  const dim3 block = getApplyBlock();
+
+  dim3 grid;
+  if (!getApplyGrid(state, totalElements, grid)) {
+    return false;
+  }
+
+  // If tensor args have overlapping indices and are read/write, then
+  // we must expand the tensor to a contiguous form first, since
+  // otherwise there are conflicting writes. Upon copying back to the
+  // non-contiguous form, there will be conflicting writes, but at
+  // least with copy, one of the updaters will win atomically. This is
+  // a sketchy property of the old system as well (writing into all
+  // indices of a tensor with overlapping indices should probably be
+  // an error, since it is unclear which one should win), but we will
+  // preserve this last-writer-wins (in arbitrary copy order) behavior.
+  std::vector<TensorType*> old;
+  for (int i = 0; i < n_ts; i++) {
+    // Assumed to be ReadWrite
+    if (TensorUtils<TensorType>::overlappingIndices(state, ts[i])) {
+      old.push_back(ts[i]);
+      ts[i] = TensorUtils<TensorType>::newContiguous(state, ts[i]);
+    } else {
+      old.push_back(nullptr);
+    }
+  }
+
+  // TODO: we removed the 1-dim/2-dim special casing which apparently
+  // is important for performance.  Bring it back if necessary.
+  bool allContiguous = true;
+  std::vector<TensorInfo<typename TensorUtils<TensorType>::DataType, unsigned long>> infos;
+  infos.reserve(n_ts);
+  for (int i = 0; i < n_ts; i++) {
+    auto info = getTensorInfo<TensorType, unsigned long>(state, ts[i]);
+    info.collapseDims();
+    allContiguous = allContiguous && info.isContiguous();
+    infos.emplace_back(std::move(info));
+  }
+
+  int dim;
+  if (allContiguous) {
+    dim = -2;
+  } else {
+    dim = -1;
+  }
+  std::vector<int> dims(n_ts, dim);
+
+  kernelPointwiseApplyManyRTC<typename TensorUtils<TensorType>::DataType, unsigned long>
+    (infos.data(), op_string, totalElements, grid, block, dims, stream);
+
+  for (int i = 0; i < n_ts; i++) {
+    if (old[i]) {
+      // Ignore overlaps when copying back; if we use THCTensor_copy
+      // instead, it will recursively try and invoke ourselves to make
+      // oldB contiguous.
+      TensorUtils<TensorType>::copyIgnoringOverlaps(state, old[i], ts[i]);
+      TensorUtils<TensorType>::free(state, ts[i]);
+      ts[i] = old[i];
+    }
+  }
+
+  return true;
+}
+
+#define THC_POINTWISE_APPLY_MANY(TYPE) \
+  extern "C" \
+  bool TH_CONCAT_2(TYPE, _pointwiseApplyMany)(THCState* state, \
+                                    TYPE** ts, \
+                                    int n_ts, \
+                                    const char* op_string) { \
+    return THC_pointwiseApplyMany<TYPE>(state, ts, n_ts, op_string); \
+  }
+
+THC_POINTWISE_APPLY_MANY(THCudaTensor)
+THC_POINTWISE_APPLY_MANY(THCudaDoubleTensor)
+THC_POINTWISE_APPLY_MANY(THCudaHalfTensor)
+
 // Example op: 'x = y*2'
-const char* instanciate_apply1 = "                                      \n\
+const char* instantiate_apply1 = "                                      \n\
 #include <%s>                                                     \n\
 typedef %s Ta;                                                          \n\
 typedef %s IndexType; 							\n\
@@ -124,7 +298,7 @@ void kernelPointwiseApply1RTC(
   char src[2048];
   const char *headers[] = {THCApplyRTC_cuh};
   const char *includeNames[] = {"THCApplyRTC.cuh"};
-  sprintf(src, instanciate_apply1, includeNames[0], ta_type, index_type, op, A);
+  sprintf(src, instantiate_apply1, includeNames[0], ta_type, index_type, op, A);
 
   PTXPtr ptx;
   ApplyHash hash(op, ta_type, index_type, A);
@@ -143,7 +317,7 @@ void kernelPointwiseApply1RTC(
 }
 
 // Example op: 'x = x*y'
-const char* instanciate_apply2 = "                                      \n\
+const char* instantiate_apply2 = "                                      \n\
 #include <%s>                                                           \n\
 typedef %s Ta;                                                          \n\
 typedef %s Tb;                                                          \n\
@@ -184,7 +358,7 @@ void kernelPointwiseApply2RTC(
   char src[2048];
   const char *headers[] = {THCApplyRTC_cuh};
   const char *includeNames[] = {"THCApplyRTC.cuh"};
-  sprintf(src, instanciate_apply2, includeNames[0], ta_type, tb_type, index_type, op, A, B);
+  sprintf(src, instantiate_apply2, includeNames[0], ta_type, tb_type, index_type, op, A, B);
 
   PTXPtr ptx;
   ApplyHash hash(op, std::string(ta_type)+"_"+tb_type, index_type, A, B);
@@ -204,7 +378,7 @@ void kernelPointwiseApply2RTC(
 
 
 // Example op: 'x = y*z'
-const char* instanciate_apply3 = "                                      \n\
+const char* instantiate_apply3 = "                                      \n\
 #include <%s>                                                           \n\
 typedef %s Ta;                                                          \n\
 typedef %s Tb;                                                          \n\
@@ -251,7 +425,7 @@ void kernelPointwiseApply3RTC(
   char src[4096];
   const char *headers[] = {THCApplyRTC_cuh};
   const char *includeNames[] = {"THCApplyRTC.cuh"};
-  sprintf(src, instanciate_apply3, includeNames[0], ta_type, tb_type, tc_type, index_type, op, A, B, C);
+  sprintf(src, instantiate_apply3, includeNames[0], ta_type, tb_type, tc_type, index_type, op, A, B, C);
 
   PTXPtr ptx;
   ApplyHash hash(op, std::string(ta_type)+"_"+tb_type+"_"+tc_type, index_type, A, B, C);
