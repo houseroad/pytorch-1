@@ -255,6 +255,98 @@ struct Fuser
 };
 */
 
+struct RnEnv {
+  std::unordered_map<unique, unique> env;
+  unique& unique_supply;
+
+  RnEnv(unique& unique_supply)
+    : unique_supply(unique_supply)
+    {};
+
+  std::shared_ptr<Local> rename(std::shared_ptr<Local> l) {
+    std::make_shared<Local>(env.at(l->unique));
+  }
+  local_list rename(const local_list& locals) {
+    local_list new_locals;
+    new_locals.reserve(locals.size());
+    for (auto& l : locals) {
+      new_locals.emplace_back(rename(l));
+    }
+    return new_locals;
+  }
+
+  std::shared_ptr<Local> fresh(std::shared_ptr<Local> l) {
+    auto u = unique_supply++;
+    env.insert({l->unique, u});
+    std::make_shared<Local>(u);
+  }
+  local_list fresh(const local_list& locals) {
+    local_list new_locals;
+    new_locals.reserve(locals.size());
+    for (auto& l : locals) {
+      new_locals.emplace_back(fresh(l));
+    }
+    return new_locals;
+  }
+};
+
+struct FuseEdge2 : public ExprVisitor<FuseEdge2, std::shared_ptr<Expr>> {
+  //std::shared_ptr<Graph> ret;
+  local_list ret_inputs;
+  RnEnv rn_env;
+  unique& unique_supply;
+  std::shared_ptr<Graph> g1;
+  int g1_input;
+  std::shared_ptr<Graph> g2;
+  int g2_output;
+  FuseEdge2(unique& unique_supply, std::shared_ptr<Graph> g1, int g1_input, std::shared_ptr<Graph> g2, int g2_output)
+    : unique_supply(unique_supply)
+    , rn_env(unique_supply)
+    , g1(g1)
+    , g1_input(g1_input)
+    , g2(g2)
+    , g2_output(g2_output)
+    {}
+  std::shared_ptr<Graph> run() {
+    for (auto& l : g2->params) {
+      ret_inputs.push_back(l);
+    }
+    auto ret_e = visitExpr(g2->body);
+    // NB: ret_inputs got updated with other inputs needed
+    return std::make_shared<Graph>(ret_inputs, ret_e);
+  }
+  std::shared_ptr<Expr> visitTuple(std::shared_ptr<Tuple> e) {
+    int i = 0;
+    for (auto& l : g1->params) {
+      if (i != g1_input) {
+        // no renaming!
+        ret_inputs.push_back(l);
+      }
+      i++;
+    }
+    // TODO: stop dropping returns
+    return std::make_shared<Let>(
+      Bind({g1->params[g1_input]},
+           std::make_shared<Instruction>(
+              std::make_shared<PrimOp>(PrimOp::Op::Id),
+              local_list{rn_env.rename(e->locals[g2_output])}
+           )
+         ),
+      g1->body);
+  }
+  std::shared_ptr<Expr> visitLet(std::shared_ptr<Let> e) {
+    auto ret_args = rn_env.rename(e->bind.rval->args);
+    auto ret_lvals = rn_env.fresh(e->bind.lvals);
+    auto ret_e = visitExpr(e->expr);
+    return std::make_shared<Let>(Bind(ret_lvals, std::make_shared<Instruction>(e->bind.rval->op, ret_args)), ret_e);
+  }
+};
+
+std::shared_ptr<Graph> fuse_edge(std::shared_ptr<Graph> g1, int g1_input, std::shared_ptr<Graph> g2, int g2_output) {
+  return nullptr;
+}
+
+
 std::shared_ptr<Expr> pointwise_fusion(std::shared_ptr<Expr> e, int& unique_supply) {
   DefUses uses;
   uses.visitExpr(e);
