@@ -215,16 +215,36 @@ bool THC_pointwiseApplyMany(THCState* state,
 
   // TODO: we removed the 1-dim/2-dim special casing which apparently
   // is important for performance.  Bring it back if necessary.
-  bool allContiguous = true;
+  //bool allContiguous = true;
   std::vector<TensorInfo<typename TensorUtils<TensorType>::DataType, unsigned long>> infos;
   infos.reserve(n_ts);
+  std::vector<int> dims;
   for (int i = 0; i < n_ts; i++) {
     auto info = getTensorInfo<TensorType, unsigned long>(state, ts[i]);
     info.collapseDims();
-    allContiguous = allContiguous && info.isContiguous();
+    //allContiguous = allContiguous && info.isContiguous();
+    // TODO: unroll me! (But WHY?!)
+    int dim = -3;
+    if (info.isContiguous()) {
+      dim = -2;
+    } else {
+      switch (info.dims) {
+        case 1:
+          dim = 1;
+          break;
+        case 2:
+          dim = 2;
+          break;
+        default:
+          dim = -1;
+          break;
+      }
+    }
+    dims.push_back(dim);
     infos.emplace_back(std::move(info));
   }
 
+  /*
   int dim;
   if (allContiguous) {
     dim = -2;
@@ -232,6 +252,7 @@ bool THC_pointwiseApplyMany(THCState* state,
     dim = -1;
   }
   std::vector<int> dims(n_ts, dim);
+  */
 
   kernelPointwiseApplyManyRTC<typename TensorUtils<TensorType>::DataType, unsigned long>
     (infos.data(), op_string, totalElements, grid, block, dims, stream);
