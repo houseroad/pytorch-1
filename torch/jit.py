@@ -110,8 +110,15 @@ def verify_model(model):
             # test for equality
             for x, y in zip(flat_trace_out, flat_real_out):
                 if isinstance(x, Variable) and isinstance(y, Variable):
-                    # TODO: Could there ever be numeric instability?
-                    if not x.data.equal(y.data):
+                    # cribbed from test/common.py
+                    diff = x.data - y.data
+                    if diff.is_signed():
+                      diff = diff.abs()
+                    max_error = diff.max()
+                    # It seems the fused kernels differ slightly. Might
+                    # be difference in tanh/sigmoid implementation (I
+                    # reimplemented them rather than take CUDA)
+                    if max_error > 1e-5:
                         print(x)
                         print(y)
                         raise "JIT and real computation mismatch"
