@@ -2,6 +2,7 @@
 
 #include <unordered_map>
 #include <tuple>
+#include <iostream>
 
 namespace torch { namespace autograd {
 
@@ -60,7 +61,11 @@ struct DefUses
 {
   // last int is uses
   def_uses env;
-  void visitTuple(std::shared_ptr<Tuple> e) {}
+  void visitTuple(std::shared_ptr<Tuple> e) {
+    for (auto& l : e->locals) {
+      std::get<2>(env[l->unique])++;
+    }
+  }
   void visitLet(std::shared_ptr<Let> e) {
     int i = 0;
     for (auto& l : e->bind.lvals) {
@@ -73,6 +78,8 @@ struct DefUses
     visitExpr(e->expr);
   }
 };
+
+/*
 
 // Given:
 //    g = \x_1 ... x_n ->
@@ -160,7 +167,6 @@ std::shared_ptr<Expr> inline_graph(
   return InlineGraph(old2new, g2, unique_supply).visitExpr(g->body);
 }
 
-/*
 // Given g1 = \x_1 ... x_i ... x_n -> ...
 //       g2 = \y_1 ... y_m -> ...
 //       arg = i
@@ -171,9 +177,33 @@ std::shared_ptr<Expr> inline_graph(
 //          s1 ... st = g1 x_1 ... rj ... x_n
 //          ret r1 ..(omit j).. rs s1 ... st
 // but with g1 and g2 inlined
-void compose_at(std::shared_ptr<Graph> g1, std::shared_ptr<Graph> g2, int arg) {
+std::shared_ptr<Graph> compose_at(std::shared_ptr<Graph> g1, std::shared_ptr<Graph> g2, int arg, int out, unique& unique_supply) {
+  std::unordered_map<unique, unique> old2new;
+  local_list new_inputs;
+  for (size_t i = 0; i < g1->params.size(); i++) {
+    if (i == arg) continue;
+    new_inputs.push_back(g1->params[i]);
+  }
+  local_list g2_outputs;
+  local_list g2_inputs;
+  for (size_t j = 0; j < g2->params.size(); j++) {
+    auto u = unique_supply++;
+    old2new.insert({g2->params[j]->unique, u});
+    new_inputs.push_back(std::make_shared<Local>(u));
+    g2_inputs.push_back(std::make_shared<Local>(u));
+  }
+
+    // ERG
+    if (j == out) {
+      g2_outputs.push_back(g1->params[arg]);
+    } else {
+      auto u = unique_supply++;
+      old2new.insert({g2->params[j]->unique, u});
+      g2_outputs.push_back();
+    }
+
+  //inline_graph(g2, );
 }
-*/
 
 struct Fuser
   : public ExprVisitor<Fuser, void>
@@ -223,10 +253,14 @@ struct Fuser
   std::shared_ptr<Graph> visitPrimOp(std::shared_ptr<PrimOp> o) {return nullptr;}
   std::shared_ptr<Graph> visitPythonOp(std::shared_ptr<PythonOp> o) {return nullptr;}
 };
+*/
 
-std::shared_ptr<Expr> pointwise_fusion(std::shared_ptr<Expr> e) {
+std::shared_ptr<Expr> pointwise_fusion(std::shared_ptr<Expr> e, int& unique_supply) {
   DefUses uses;
   uses.visitExpr(e);
+  for (auto it : uses.env) {
+    std::cout << "%" << it.first << " usage count: " << std::get<2>(it.second) << std::endl;
+  }
   return e;
 }
 

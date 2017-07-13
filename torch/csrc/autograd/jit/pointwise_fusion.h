@@ -8,6 +8,6 @@ namespace torch { namespace autograd {
 //    - Pointwise (map) fusion only
 //    - Maps must only be used once (syntactic fusion criteria)
 
-std::shared_ptr<Expr> pointwise_fusion(std::shared_ptr<Expr>);
+std::shared_ptr<Expr> pointwise_fusion(std::shared_ptr<Expr>, int& unique_supply);
 
 }}

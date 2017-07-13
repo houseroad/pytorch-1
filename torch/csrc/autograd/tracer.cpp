@@ -1,5 +1,7 @@
 #include "torch/csrc/autograd/tracer.h"
 
+#include "torch/csrc/autograd/jit/pointwise_fusion.h"
+
 namespace torch { namespace autograd {
 
 std::unique_ptr<TracingState> GlobalTracingState = nullptr;
@@ -14,7 +16,8 @@ void TracingState::addBinding(local_list lvals, std::shared_ptr<Instruction> rva
 
 std::shared_ptr<Graph> TracingState::graph(local_list outputs) {
   auto expr = builder->expr(std::make_shared<Tuple>(outputs));
-  return std::make_shared<Graph>(params, expr);
+  auto fused_expr = pointwise_fusion(expr, next_unique);
+  return std::make_shared<Graph>(params, fused_expr);
 }
 
 void Tracer_enter() {
