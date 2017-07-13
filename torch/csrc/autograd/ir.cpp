@@ -50,19 +50,30 @@ public:
     switch (e->op) {
       case PrimOp::Op::Add:
         s << "prim_add";
-        break;
+        return;
       case PrimOp::Op::Mul:
         s << "prim_mul";
-        break;
+        return;
       case PrimOp::Op::Sigmoid:
         s << "prim_sigmoid";
-        break;
+        return;
       case PrimOp::Op::Tanh:
         s << "prim_tanh";
-        break;
-      default:
-        __builtin_unreachable();
+        return;
+      case PrimOp::Op::AddBackward:
+        s << "prim_add_backward";
+        return;
+      case PrimOp::Op::MulBackward:
+        s << "prim_mul_backward";
+        return;
+      case PrimOp::Op::SigmoidBackward:
+        s << "prim_sigmoid_backward";
+        return;
+      case PrimOp::Op::TanhBackward:
+        s << "prim_tanh_backward";
+        return;
     }
+    __builtin_unreachable();
   }
 
   // Instruction
@@ -177,19 +188,30 @@ public:
     switch (e->op) {
       case PrimOp::Op::Add:
         s << "Add";
-        break;
+        return;
       case PrimOp::Op::Mul:
         s << "Mul";
-        break;
+        return;
       case PrimOp::Op::Sigmoid:
         s << "Sigmoid";
-        break;
+        return;
       case PrimOp::Op::Tanh:
         s << "Tanh";
-        break;
-      default:
-        __builtin_unreachable();
+        return;
+      case PrimOp::Op::AddBackward:
+        s << "AddBackward";
+        return;
+      case PrimOp::Op::MulBackward:
+        s << "MulBackward";
+        return;
+      case PrimOp::Op::SigmoidBackward:
+        s << "SigmoidBackward";
+        return;
+      case PrimOp::Op::TanhBackward:
+        s << "TanhBackward";
+        return;
     }
+    __builtin_unreachable();
   }
 
   // Instruction

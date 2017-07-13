@@ -182,6 +182,10 @@ struct PrimOp : public Operator {
     Mul,
     Tanh,
     Sigmoid,
+    AddBackward,
+    MulBackward,
+    TanhBackward,
+    SigmoidBackward,
   };
   Op op;
   PrimOp(Op op)

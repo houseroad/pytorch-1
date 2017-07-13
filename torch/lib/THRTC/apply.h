@@ -25,6 +25,31 @@ void prim_sigmoid(float x, float& r) {
   r = one / (one + expf(-x));
 }
 
+__device__ inline
+void prim_mul_backward(float x, float y, float grad_r, float& grad_x, float& grad_y) {
+  grad_x = grad_r * y;
+  grad_y = grad_r * x;
+}
+__device__ inline
+void prim_add_backward(float x, float y, float grad_r, float& grad_x, float& grad_y) {
+  grad_x = grad_r;
+  grad_y = grad_r;
+}
+
+// NB: These do recomputation. Could be expensive!
+
+__device__ inline
+void prim_tanh_backward(float x, float grad_r, float& grad_x) {
+  float r = tanh(x);
+  grad_x = grad_r * (1 - r * r);
+}
+__device__ inline
+void prim_sigmoid_backward(float x, float grad_r, float& grad_x) {
+  float r;
+  prim_sigmoid(x, r);
+  grad_x = grad_r * r * (1 - r);
+}
+
 template <typename T, typename IndexType>
 struct TensorInfo {
   __device__ inline bool isContiguous() const {
