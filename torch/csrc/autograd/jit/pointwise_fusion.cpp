@@ -1,61 +1,17 @@
 #include "torch/csrc/autograd/jit/pointwise_fusion.h"
 
 #include <unordered_map>
+#include <unordered_set>
 #include <tuple>
 #include <iostream>
 
 namespace torch { namespace autograd {
 
-// Syntactic way to do it:
-//    - Inline everything as much as you can
-//    - Pattern match for map f (map g x) and fuse them
-//
-// Our strategy:
-//    - An "inlining" pass which simply marks if a single-output
-//    expression is used only once, and sets up a def-use link between
-//    a local and its definition (stored externally for now...)
-//
-// Interesting thing about hog-wild ANFing: it becomes really obvious when
-// you move let statements around. (In contrast, expression erases the
-// ordering, so you don't have to worry about it.)
-//
-// If it's single use, we can unconditionally remove the let-binding.
-// This highly smells of pointer manipulation (otherwise have to rebuild
-// the entire front of the singly linked list).  We can instead remove
-// let bindings in a dead-code elimination pass.
-//
-// Does it make sense to figure out nesting?  That may make certain
-// optimization passes easier
-//
-// NO MUTATION!!!
-//
-//
-// Dead variable elimination
-//
-//    let z, zz = map (\x -> (x + x, x * 2)) x
-//    in z
-//
-//    NB: zz is dead
-//
-// Map is equivalent to a "Fusion group", but with its own binding structure.
-// Benefit of "fusion group": you can run other optimizations as long as they
-// "preserve" the fusion group.
-//
-//
-//
-// At the decision point, we have something like (NB shadowing!):
-//
-//      %1 = map [graph %0, %1, %2 { ... }] %2, %3, %4
-//
-// where %2 and %4 are eligible for inlining.  For simplicity, we want to inline
-// one argument at a time.  Invariant is that inputs %2 refer to are not
-// inlineable (because we already processed them to saturation.)  Inlining of
-// %2 can introduce other arguments, which we want to deduplicate.
-
 using output_num = int;
 using unique = int;
-using def_uses = std::unordered_map<unique, std::tuple<std::shared_ptr<Instruction>, output_num, int>>;
+using def_uses = std::unordered_map<unique, int>;
 
+// Computes the number of times a variable is used
 struct DefUses
   : public ExprVisitor<DefUses, void>
 {
@@ -63,22 +19,24 @@ struct DefUses
   def_uses env;
   void visitTuple(std::shared_ptr<Tuple> e) {
     for (auto l : e->locals) {
-      std::get<2>(env[l->unique])++;
+      env[l->unique]++;
     }
   }
   void visitLet(std::shared_ptr<Let> e) {
     int i = 0;
     for (auto l : e->bind.lvals) {
-      env.insert({l->unique, std::make_tuple(e->bind.rval, i, 0)});
+      env.insert({l->unique, 0});
       i++;
     }
     for (auto l : e->bind.rval->args) {
-      std::get<2>(env[l->unique])++;
+      env[l->unique]++;
     }
     visitExpr(e->expr);
   }
 };
 
+// A renaming environment is used to remap local variables to fresh ones
+// when we are joining to environments.
 struct RnEnv {
   std::unordered_map<unique, unique> env;
   unique& unique_supply;
@@ -87,6 +45,7 @@ struct RnEnv {
     : unique_supply(unique_supply)
     {};
 
+  // Remap a local number to a previously allocated fresh one
   std::shared_ptr<Local> rename(std::shared_ptr<Local> l) {
     auto r = env.find(l->unique);
     if (r != env.end()) {
@@ -108,6 +67,7 @@ struct RnEnv {
     return new_locals;
   }
 
+  // Make a fresh variable for this local
   std::shared_ptr<Local> fresh(std::shared_ptr<Local> l) {
     auto u = unique_supply++;
     env.insert({l->unique, u});
@@ -123,8 +83,28 @@ struct RnEnv {
   }
 };
 
+// Single edge fuser.  Only works for SINGLE RETURN things (NOT CHECKED)
+//
+// Given
+//  g2 = graph y0 ... ym { ... ret z }
+//  g2_output = j = 0 (always ZERO today)
+//  g1 = graph x0 ... xi ... xn { ... }
+//  g1_input = i
+//
+// fuse them into a single graph
+//
+//  graph x0 ... (y0 ... ym) ... xn
+//    ...g2 body...
+//    xi = z
+//    ...g1 body...
+//
+// Up to alpha-equivalence.
+//
+// This can generalize to take multiple return g2, in which case the extra
+// returns need to be returned
 struct FuseEdge2 : public ExprVisitor<FuseEdge2, std::shared_ptr<Expr>> {
   local_list ret_inputs;
+  // we rename all of the locals in g2, this keeps track of it
   RnEnv rn_env;
   unique& unique_supply;
   std::shared_ptr<Graph> g1;
@@ -140,27 +120,31 @@ struct FuseEdge2 : public ExprVisitor<FuseEdge2, std::shared_ptr<Expr>> {
     , g2_output(g2_output)
     {}
   std::shared_ptr<Graph> run() {
-    std::cout << "CA0\n";
+    // Add the parameters to the environment, so subsequent renames catch them
     for (auto l : g2->params) {
-      ret_inputs.push_back(rn_env.fresh(l));
+      rn_env.fresh(l);
     }
-    std::cout << "CA1\n";
     auto ret_e = visitExpr(g2->body);
-    std::cout << "CA2\n";
-    // NB: ret_inputs got updated with other inputs needed
+    // NB: ret_inputs got updated via visitTuple
     return std::make_shared<Graph>(ret_inputs, ret_e);
   }
   std::shared_ptr<Expr> visitTuple(std::shared_ptr<Tuple> e) {
     printExpr(e, std::cerr);
     int i = 0;
+    // setup the final inputs
     for (auto l : g1->params) {
       if (i != g1_input) {
         // no renaming!
         ret_inputs.push_back(l);
+      } else {
+        for (auto l : g2->params) {
+          ret_inputs.push_back(rn_env.rename(l));
+        }
       }
       i++;
     }
-    // TODO: stop dropping returns
+    // TODO: stop dropping extra returns from g2.  Need a second recursion
+    // to handle that.
     return std::make_shared<Let>(
       Bind({g1->params[g1_input]},
            std::make_shared<Instruction>(
@@ -189,15 +173,18 @@ std::shared_ptr<Graph> fuse_edge(std::shared_ptr<Graph> g1, int g1_input, std::s
 }
 
 
-
+// Fuse single-use map nodes.  Basically, anywhere a map node with one output is
+// used exactly once by another map node, we fuse them together.
 struct Fuser
   : public ExprVisitor<Fuser, std::shared_ptr<Expr>>
   , public OperatorVisitor<Fuser, std::shared_ptr<Graph>>
 {
-  def_uses env;
+  def_uses uses;
+  std::unordered_map<unique, std::pair<std::shared_ptr<Instruction>, output_num>> env;
+  std::unordered_set<unique> killed;
   unique& unique_supply;
-  Fuser(def_uses env, unique& unique_supply)
-    : env(env)
+  Fuser(def_uses uses, unique& unique_supply)
+    : uses(uses)
     , unique_supply(unique_supply)
     {}
   std::shared_ptr<Expr> visitTuple(std::shared_ptr<Tuple> e) {
@@ -217,32 +204,43 @@ struct Fuser
       for (size_t i = 0; i < g->params.size(); i++) {
         if (g->params.size() != new_args.size()) throw std::logic_error("A");
         auto l = new_args[i];
-        auto r = env[l->unique];
-        auto sub_insn   = std::get<0>(r);
-        auto sub_output = std::get<1>(r);
-        auto sub_uses   = std::get<2>(r);
-        auto sub_g = sub_insn ? visitOperator(sub_insn->op) : nullptr;
-        // TODO: add check it's single output
-        std::cout << l->unique << " sub_uses=" << sub_uses << "\n";
-        if (sub_uses == 1 && sub_g != nullptr) {
-          std::cout << "fusing!\n";
-          g = fuse_edge(g, i, sub_g, sub_output, unique_supply);
-          local_list new_new_args;
-          std::cout << "done fusing\n";
-          printGraph(g, std::cout);
-          std::cout << "\n";
-          for (size_t j = 0; j < new_args.size(); j++) {
-            if (i == j) {
-              for (auto l : sub_insn->args) {
-                new_new_args.push_back(l);
+        auto sub_uses = uses[l->unique];
+        // TODO: the def uses here gets old!  That's awful!  Better to
+        // recompute it as we go.
+        auto r = env.find(l->unique);
+        if (r != env.end()) {
+          auto sub_insn   = r->second.first;
+          auto sub_output = r->second.second;
+          auto sub_g = visitOperator(sub_insn->op);
+          // TODO: add check it's single output
+          std::cout << l->unique << " sub_uses=" << sub_uses << "\n";
+          if (sub_uses == 1 && sub_g != nullptr) {
+            // This variable was used only once and we've removed
+            // it's only usage, so kill it!
+            // killed.insert(l->unique);
+            std::cout << "fusing!\n";
+            g = fuse_edge(g, i, sub_g, sub_output, unique_supply);
+            local_list new_new_args;
+            std::cout << "done fusing\n";
+            printGraph(g, std::cout);
+            std::cout << "\n";
+            // TODO: this is awful!  Would be better to splice,
+            // or use a different calling convention for the merged
+            // thing.
+            for (size_t j = 0; j < new_args.size(); j++) {
+              if (i == j) {
+                for (auto l : sub_insn->args) {
+                  new_new_args.push_back(l);
+                }
+              } else {
+                new_new_args.push_back(new_args.at(j));
               }
-            } else {
-              new_new_args.push_back(new_args.at(j));
             }
+            new_args = new_new_args;
+            i--; // reprocess the new arguments!!!
+            // Would be better to skip over them...
+            //i += sub_g->params.size() - 1;
           }
-          new_args = new_new_args;
-          i--; // redos everything!
-          //i += sub_g->params.size() - 1;
         }
       }
       inst = std::make_shared<Instruction>(
@@ -251,6 +249,11 @@ struct Fuser
         );
     } else {
       inst = e->bind.rval;
+    }
+    int i = 0;
+    for (auto l : e->bind.lvals) {
+      env.insert({l->unique, {inst, i}});
+      i++;
     }
     auto r = visitExpr(e->expr);
     return std::make_shared<Let>(Bind(e->bind.lvals, inst), r);
@@ -269,9 +272,11 @@ struct Fuser
 std::shared_ptr<Expr> pointwise_fusion(std::shared_ptr<Expr> e, int& unique_supply) {
   DefUses uses;
   uses.visitExpr(e);
+  /*
   for (auto it : uses.env) {
     std::cout << "%" << it.first << " usage count: " << std::get<2>(it.second) << std::endl;
   }
+  */
   return Fuser(uses.env, unique_supply).visitExpr(e);
 }
 

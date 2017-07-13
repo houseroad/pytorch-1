@@ -182,7 +182,7 @@ public:
     s << "map [";
     // TODO: increase indentation
     //visitExpr(e->fn);
-    CudaPrinter(s).visitGraph(e->fn);
+    visitGraph(e->fn);
     s << "]";
   }
 
@@ -200,6 +200,9 @@ public:
         return;
       case PrimOp::Op::Tanh:
         s << "Tanh";
+        return;
+      case PrimOp::Op::Id:
+        s << "Id";
         return;
       case PrimOp::Op::AddBackward:
         s << "AddBackward";
