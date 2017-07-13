@@ -43,6 +43,9 @@ struct Linearize
 {
 }
 
+// This is going to have problems: in general we can't rely on
+// inputs or outputs to be materialized
+
 struct Differentiate
   : public ExprVisitor<Differentiate, std::shared_ptr<Graph>>
   , public OperatorVisitor<Differentiate>
@@ -52,8 +55,25 @@ struct Differentiate
     return std::make_shared<Graph>(e->locals, r);
   }
   std::shared_ptr<Graph> visitLet(std::shared_ptr<Let> e, std::shared_ptr<Expr> r) {
-    e
-    // TODO
+    auto outputs = e->bind.rval->args;
+    auto inputs = e->bind.lvals;
+    auto op = visitOperator(e->bind.rval->op);
+    auto new_r = std::make_shared<Let>(Bind(outputs, std::make_shared<Instruction>(op, inputs)), e);
+    return visitExpr(e->body, new_r);
+  }
+
+  // Operator
+  std::shared_ptr<Operator> visitPythonOp(std::shared_ptr<PythonOp> o) {
+    throw std::logic_error("not supported");
+  }
+  std::shared_ptr<Operator> visitMapOp(std::shared_ptr<MapOp> o) {
+    throw std::logic_error("not supported");
+  }
+  std::shared_ptr<Operator> visitPrimOp(std::shared_ptr<PrimOp> o) {
+    switch(op->op) {
+      case PrimOp::Op::Add:
+        return PrimOp::Op::AddBackward
+    }
   }
 };
 */
@@ -135,8 +155,9 @@ auto Map::apply(const variable_list& inputs) -> variable_list {
 //    recomputing, but it is unclear when this is profitable.
 
 auto MapBackward::apply(const variable_list& grad_outputs) -> variable_list {
-  check_input_variables("MapBackward", grad_outputs, 1);
-  return {grad_outputs[0], grad_outputs[0]};
+  throw std::logic_error("Backwards for fused maps not supported");
+  //check_input_variables("MapBackward", grad_outputs, 1);
+  //return {grad_outputs[0], grad_outputs[0]};
 };
 
 }}
