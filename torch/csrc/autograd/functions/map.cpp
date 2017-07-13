@@ -76,11 +76,11 @@ struct Differentiate
     }
   }
 };
-*/
 
 static std::shared_ptr<Graph> differentiate(std::shared_ptr<Graph> e) {
   return e;
 }
+*/
 
 auto Map::apply(const variable_list& inputs) -> variable_list {
 

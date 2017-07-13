@@ -62,150 +62,22 @@ struct DefUses
   // last int is uses
   def_uses env;
   void visitTuple(std::shared_ptr<Tuple> e) {
-    for (auto& l : e->locals) {
+    for (auto l : e->locals) {
       std::get<2>(env[l->unique])++;
     }
   }
   void visitLet(std::shared_ptr<Let> e) {
     int i = 0;
-    for (auto& l : e->bind.lvals) {
+    for (auto l : e->bind.lvals) {
       env.insert({l->unique, std::make_tuple(e->bind.rval, i, 0)});
       i++;
     }
-    for (auto& l : e->bind.rval->args) {
+    for (auto l : e->bind.rval->args) {
       std::get<2>(env[l->unique])++;
     }
     visitExpr(e->expr);
   }
 };
-
-/*
-
-// Given:
-//    g = \x_1 ... x_n ->
-//          g_body
-//          ret (r_1 ... r_m)
-//    y_1 ... y_n   (in scope)
-//    g2 = \s_1 ... s_m ->
-//            g2_body
-//
-// Return:
-//    s1 ... sm <- g y1 ... y_n
-//    g2_body
-//
-// with g inlined (internal variables renamed
-// to avoid conflict )
-
-struct InlineGraph : public ExprVisitor<InlineGraph, std::shared_ptr<Expr>>
-{
-  std::unordered_map<unique, unique> old2new;
-  std::shared_ptr<Graph> inner_graph;
-  unique& unique_supply;
-  InlineGraph(std::unordered_map<unique, unique> old2new,
-              std::shared_ptr<Graph> inner_graph,
-              unique& unique_supply)
-    : old2new(old2new)
-    , inner_graph(inner_graph)
-    , unique_supply(unique_supply)
-    {}
-  std::shared_ptr<Expr> visitLet(std::shared_ptr<Let> e) {
-    auto r = visitExpr(e->expr);
-    local_list new_lvals;
-    new_lvals.reserve(e->bind.lvals.size());
-    for (auto& l : e->bind.lvals) {
-      auto u = unique_supply++;
-      old2new[l->unique] = u;
-      new_lvals.emplace_back(std::make_shared<Local>(u));
-    }
-    local_list new_args;
-    new_args.reserve(e->bind.rval->args.size());
-    for (auto& l : e->bind.rval->args) {
-      new_args.emplace_back(translate(l));
-    }
-    return std::make_shared<Let>(
-              Bind(new_lvals,
-                   std::make_shared<Instruction>(
-                      e->bind.rval->op,
-                      new_args
-                   )
-              ),
-              r);
-  }
-  std::shared_ptr<Expr> visitTuple(std::shared_ptr<Tuple> e) {
-    auto r = inner_graph->body;
-    for (size_t i = 0; i < e->locals.size(); i++) {
-      // let r_1
-      r = std::make_shared<Let>(
-            Bind({inner_graph->params[i]},
-                 std::make_shared<Instruction>(
-                    std::make_shared<PrimOp>(PrimOp::Op::Id),
-                    local_list{translate(e->locals[i])}
-                 )
-            ),
-          r);
-    }
-    return r;
-  }
-  std::shared_ptr<Local> translate(std::shared_ptr<Local> l) {
-    int new_l = old2new.at(l->unique);
-    return std::make_shared<Local>(new_l);
-  }
-};
-
-std::shared_ptr<Expr> inline_graph(
-  std::shared_ptr<Graph> g,
-  local_list inputs,
-  std::shared_ptr<Graph> g2,
-  unique& unique_supply
-) {
-  std::unordered_map<unique, unique> old2new;
-  assert(inputs.size() == g->params.size());
-  for (size_t i = 0; i < inputs.size(); i++) {
-    assert(inputs[i]->unique < unique_supply);
-    old2new.insert({g->params[i]->unique, inputs[i]->unique});
-  }
-  return InlineGraph(old2new, g2, unique_supply).visitExpr(g->body);
-}
-
-// Given g1 = \x_1 ... x_i ... x_n -> ...
-//       g2 = \y_1 ... y_m -> ...
-//       arg = i
-//       out = j
-// computes the expression
-//       \x_1 ..(omit i).. x_n y_1 ... y_m ->
-//          r1 ... rj ... rs = g2 y1 ... y_m
-//          s1 ... st = g1 x_1 ... rj ... x_n
-//          ret r1 ..(omit j).. rs s1 ... st
-// but with g1 and g2 inlined
-std::shared_ptr<Graph> compose_at(std::shared_ptr<Graph> g1, std::shared_ptr<Graph> g2, int arg, int out, unique& unique_supply) {
-  std::unordered_map<unique, unique> old2new;
-  local_list new_inputs;
-  for (size_t i = 0; i < g1->params.size(); i++) {
-    if (i == arg) continue;
-    new_inputs.push_back(g1->params[i]);
-  }
-  local_list g2_outputs;
-  local_list g2_inputs;
-  for (size_t j = 0; j < g2->params.size(); j++) {
-    auto u = unique_supply++;
-    old2new.insert({g2->params[j]->unique, u});
-    new_inputs.push_back(std::make_shared<Local>(u));
-    g2_inputs.push_back(std::make_shared<Local>(u));
-  }
-
-    // ERG
-    if (j == out) {
-      g2_outputs.push_back(g1->params[arg]);
-    } else {
-      auto u = unique_supply++;
-      old2new.insert({g2->params[j]->unique, u});
-      g2_outputs.push_back();
-    }
-
-  //inline_graph(g2, );
-}
-
-*/
 
 struct RnEnv {
   std::unordered_map<unique, unique> env;
@@ -216,13 +88,22 @@ struct RnEnv {
     {};
 
   std::shared_ptr<Local> rename(std::shared_ptr<Local> l) {
-    std::make_shared<Local>(env.at(l->unique));
+    auto r = env.find(l->unique);
+    if (r != env.end()) {
+      return std::make_shared<Local>(r->second);
+    } else {
+      std::cout << "looking for " << l->unique << "\nCurrent contents:\n";
+      for (auto pair : env) {
+        std::cout << pair.first << " -> " << pair.second << "\n";
+      }
+      throw std::logic_error("could not find unique");
+    }
   }
-  local_list rename(const local_list& locals) {
+  local_list rename(local_list locals) {
     local_list new_locals;
     new_locals.reserve(locals.size());
-    for (auto& l : locals) {
-      new_locals.emplace_back(rename(l));
+    for (auto l : locals) {
+      new_locals.push_back(rename(l));
     }
     return new_locals;
   }
@@ -230,20 +111,19 @@ struct RnEnv {
   std::shared_ptr<Local> fresh(std::shared_ptr<Local> l) {
     auto u = unique_supply++;
     env.insert({l->unique, u});
-    std::make_shared<Local>(u);
+    return std::make_shared<Local>(u);
   }
-  local_list fresh(const local_list& locals) {
+  local_list fresh(local_list locals) {
     local_list new_locals;
     new_locals.reserve(locals.size());
-    for (auto& l : locals) {
-      new_locals.emplace_back(fresh(l));
+    for (auto l : locals) {
+      new_locals.push_back(fresh(l));
     }
     return new_locals;
   }
 };
 
 struct FuseEdge2 : public ExprVisitor<FuseEdge2, std::shared_ptr<Expr>> {
-  //std::shared_ptr<Graph> ret;
   local_list ret_inputs;
   RnEnv rn_env;
   unique& unique_supply;
@@ -252,24 +132,28 @@ struct FuseEdge2 : public ExprVisitor<FuseEdge2, std::shared_ptr<Expr>> {
   std::shared_ptr<Graph> g2;
   int g2_output;
   FuseEdge2(unique& unique_supply, std::shared_ptr<Graph> g1, int g1_input, std::shared_ptr<Graph> g2, int g2_output)
-    : unique_supply(unique_supply)
-    , rn_env(unique_supply)
+    : rn_env(unique_supply)
+    , unique_supply(unique_supply)
     , g1(g1)
     , g1_input(g1_input)
     , g2(g2)
     , g2_output(g2_output)
     {}
   std::shared_ptr<Graph> run() {
-    for (auto& l : g2->params) {
-      ret_inputs.push_back(l);
+    std::cout << "CA0\n";
+    for (auto l : g2->params) {
+      ret_inputs.push_back(rn_env.fresh(l));
     }
+    std::cout << "CA1\n";
     auto ret_e = visitExpr(g2->body);
+    std::cout << "CA2\n";
     // NB: ret_inputs got updated with other inputs needed
     return std::make_shared<Graph>(ret_inputs, ret_e);
   }
   std::shared_ptr<Expr> visitTuple(std::shared_ptr<Tuple> e) {
+    printExpr(e, std::cerr);
     int i = 0;
-    for (auto& l : g1->params) {
+    for (auto l : g1->params) {
       if (i != g1_input) {
         // no renaming!
         ret_inputs.push_back(l);
@@ -287,6 +171,7 @@ struct FuseEdge2 : public ExprVisitor<FuseEdge2, std::shared_ptr<Expr>> {
       g1->body);
   }
   std::shared_ptr<Expr> visitLet(std::shared_ptr<Let> e) {
+    printExpr(e, std::cerr);
     auto ret_args = rn_env.rename(e->bind.rval->args);
     auto ret_lvals = rn_env.fresh(e->bind.lvals);
     auto ret_e = visitExpr(e->expr);
@@ -295,6 +180,11 @@ struct FuseEdge2 : public ExprVisitor<FuseEdge2, std::shared_ptr<Expr>> {
 };
 
 std::shared_ptr<Graph> fuse_edge(std::shared_ptr<Graph> g1, int g1_input, std::shared_ptr<Graph> g2, int g2_output, unique& unique_supply) {
+  std::cout << "fuse_edge\ng1 = ";
+  printGraph(g1, std::cout);
+  std::cout << "\ng1_input = " << g1_input << "\ng2 = ";
+  printGraph(g2, std::cout);
+  std::cout << "\ng2_output = " << g2_output << "\n";
   return FuseEdge2(unique_supply, g1, g1_input, g2, g2_output).run();
 }
 
@@ -321,27 +211,33 @@ struct Fuser
       // profitable.  There may be multiple
       // fusions available: we'll apply them
       // one by one (fuse_edge.)
-      int i = 0;
+      printGraph(g, std::cout);
+      std::cout << "\n";
       local_list new_args = e->bind.rval->args;
-      for (int i = 0; i < g->params.size(); i++) {
-        auto l = g->params[i];
+      for (size_t i = 0; i < g->params.size(); i++) {
+        if (g->params.size() != new_args.size()) throw std::logic_error("A");
+        auto l = new_args[i];
         auto r = env[l->unique];
         auto sub_insn   = std::get<0>(r);
         auto sub_output = std::get<1>(r);
         auto sub_uses   = std::get<2>(r);
         auto sub_g = sub_insn ? visitOperator(sub_insn->op) : nullptr;
         // TODO: add check it's single output
+        std::cout << l->unique << " sub_uses=" << sub_uses << "\n";
         if (sub_uses == 1 && sub_g != nullptr) {
           std::cout << "fusing!\n";
           g = fuse_edge(g, i, sub_g, sub_output, unique_supply);
           local_list new_new_args;
-          for (int j = 0; j < new_args.size(); j++) {
+          std::cout << "done fusing\n";
+          printGraph(g, std::cout);
+          std::cout << "\n";
+          for (size_t j = 0; j < new_args.size(); j++) {
             if (i == j) {
-              for (auto& l : sub_insn->args) {
+              for (auto l : sub_insn->args) {
                 new_new_args.push_back(l);
               }
             } else {
-              new_new_args.push_back(new_args[j]);
+              new_new_args.push_back(new_args.at(j));
             }
           }
           new_args = new_new_args;
