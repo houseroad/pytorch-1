@@ -703,31 +703,54 @@ static std::shared_ptr<MapOp> maybe_make_map_op(PyObject* cls, bool is_legacy, p
                 local_list{std::make_shared<Local>(0), std::make_shared<Local>(1)},
                 fn);
     return std::make_shared<MapOp>(g);
-  /*
   } else if (op_name == "Add" && PyObject_Not(scalar_args[0])) { // not inplace
-    // TODO: hypothetically, inplace should work too
-    return std::make_shared<MapOp>(
-            std::make_shared<PBinOp>(
-              PBinOp::Op::Add,
-              std::make_shared<PVar>(PVar::Var::Y),
-              std::make_shared<PVar>(PVar::Var::Z)
-            )
-          );
+    auto fn = std::make_shared<Let>(
+            Bind({std::make_shared<Local>(2)},
+                std::make_shared<Instruction>(
+                    std::make_shared<PrimOp>(
+                      PrimOp::Op::Add
+                    ),
+                    local_list{std::make_shared<Local>(0), std::make_shared<Local>(1)}
+                )
+            ),
+            std::make_shared<Tuple>(local_list{std::make_shared<Local>(2)})
+           );
+    auto g = std::make_shared<Graph>(
+                local_list{std::make_shared<Local>(0), std::make_shared<Local>(1)},
+                fn);
+    return std::make_shared<MapOp>(g);
   } else if (op_name == "Tanh") {
-    return std::make_shared<MapOp>(
-            std::make_shared<PUnaryOp>(
-              PUnaryOp::Op::Tanh,
-              std::make_shared<PVar>(PVar::Var::Y)
-            )
-          );
+    auto fn = std::make_shared<Let>(
+            Bind({std::make_shared<Local>(1)},
+                std::make_shared<Instruction>(
+                    std::make_shared<PrimOp>(
+                      PrimOp::Op::Tanh
+                    ),
+                    local_list{std::make_shared<Local>(0)}
+                )
+            ),
+            std::make_shared<Tuple>(local_list{std::make_shared<Local>(1)})
+           );
+    auto g = std::make_shared<Graph>(
+                local_list{std::make_shared<Local>(0)},
+                fn);
+    return std::make_shared<MapOp>(g);
   } else if (op_name == "Sigmoid") {
-    return std::make_shared<MapOp>(
-            std::make_shared<PUnaryOp>(
-              PUnaryOp::Op::Sigmoid,
-              std::make_shared<PVar>(PVar::Var::Y)
-            )
-          );
-  */
+    auto fn = std::make_shared<Let>(
+            Bind({std::make_shared<Local>(1)},
+                std::make_shared<Instruction>(
+                    std::make_shared<PrimOp>(
+                      PrimOp::Op::Sigmoid
+                    ),
+                    local_list{std::make_shared<Local>(0)}
+                )
+            ),
+            std::make_shared<Tuple>(local_list{std::make_shared<Local>(1)})
+           );
+    auto g = std::make_shared<Graph>(
+                local_list{std::make_shared<Local>(0)},
+                fn);
+    return std::make_shared<MapOp>(g);
   }
   // NB: "Add" does NOT work, I believe this is because it has a special C++
   // impl
