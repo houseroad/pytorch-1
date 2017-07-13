@@ -74,7 +74,6 @@ struct DefUses
   }
 };
 
-/*
 // Given:
 //    g = \x_1 ... x_n ->
 //          g_body
@@ -89,15 +88,79 @@ struct DefUses
 //
 // with g inlined (internal variables renamed
 // to avoid conflict )
+
+struct InlineGraph : public ExprVisitor<InlineGraph, std::shared_ptr<Expr>>
+{
+  std::unordered_map<unique, unique> old2new;
+  std::shared_ptr<Graph> inner_graph;
+  unique& unique_supply;
+  InlineGraph(std::unordered_map<unique, unique> old2new,
+              std::shared_ptr<Graph> inner_graph,
+              unique& unique_supply)
+    : old2new(old2new)
+    , inner_graph(inner_graph)
+    , unique_supply(unique_supply)
+    {}
+  std::shared_ptr<Expr> visitLet(std::shared_ptr<Let> e) {
+    auto r = visitExpr(e->expr);
+    local_list new_lvals;
+    new_lvals.reserve(e->bind.lvals.size());
+    for (auto& l : e->bind.lvals) {
+      auto u = unique_supply++;
+      old2new[l->unique] = u;
+      new_lvals.emplace_back(std::make_shared<Local>(u));
+    }
+    local_list new_args;
+    new_args.reserve(e->bind.rval->args.size());
+    for (auto& l : e->bind.rval->args) {
+      new_args.emplace_back(translate(l));
+    }
+    return std::make_shared<Let>(
+              Bind(new_lvals,
+                   std::make_shared<Instruction>(
+                      e->bind.rval->op,
+                      new_args
+                   )
+              ),
+              r);
+  }
+  std::shared_ptr<Expr> visitTuple(std::shared_ptr<Tuple> e) {
+    auto r = inner_graph->body;
+    for (size_t i = 0; i < e->locals.size(); i++) {
+      // let r_1
+      r = std::make_shared<Let>(
+            Bind({inner_graph->params[i]},
+                 std::make_shared<Instruction>(
+                    std::make_shared<PrimOp>(PrimOp::Op::Id),
+                    local_list{translate(e->locals[i])}
+                 )
+            ),
+          r);
+    }
+    return r;
+  }
+  std::shared_ptr<Local> translate(std::shared_ptr<Local> l) {
+    int new_l = old2new.at(l->unique);
+    return std::make_shared<Local>(new_l);
+  }
+};
+
 std::shared_ptr<Expr> inline_graph(
   std::shared_ptr<Graph> g,
   local_list inputs,
-  std::shared_ptr<Graph> g2
-  unique& unique_supply,
+  std::shared_ptr<Graph> g2,
+  unique& unique_supply
 ) {
-  
+  std::unordered_map<unique, unique> old2new;
+  assert(inputs.size() == g->params.size());
+  for (size_t i = 0; i < inputs.size(); i++) {
+    assert(inputs[i]->unique < unique_supply);
+    old2new.insert({g->params[i]->unique, inputs[i]->unique});
+  }
+  return InlineGraph(old2new, g2, unique_supply).visitExpr(g->body);
 }
 
+/*
 // Given g1 = \x_1 ... x_i ... x_n -> ...
 //       g2 = \y_1 ... y_m -> ...
 //       arg = i

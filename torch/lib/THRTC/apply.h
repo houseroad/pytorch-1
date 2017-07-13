@@ -16,6 +16,10 @@ void prim_add(float x, float y, float& r) {
   r = x + y;
 }
 __device__ inline
+void prim_id(float x, float& r) {
+  r = x;
+}
+__device__ inline
 void prim_tanh(float x, float& r) {
   r = tanh(x);
 }

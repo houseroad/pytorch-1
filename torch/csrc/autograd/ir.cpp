@@ -60,6 +60,9 @@ public:
       case PrimOp::Op::Tanh:
         s << "prim_tanh";
         return;
+      case PrimOp::Op::Id:
+        s << "prim_id";
+        return;
       case PrimOp::Op::AddBackward:
         s << "prim_add_backward";
         return;
