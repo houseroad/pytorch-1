@@ -6,6 +6,8 @@
 #include <memory>
 #include <vector>
 #include <cassert>
+#include <unordered_map>
+#include <iostream>
 
 #include "torch/csrc/utils/object_ptr.h"
 
@@ -107,9 +109,11 @@ using Location = std::string;
 // --------------------------------------------------------------------
 // Variables, which refer to tensors (NEVER tuples of tensors)
 
+using unique = int;
+
 struct Local {
-  int unique;
-  Local(int unique)
+  ::torch::autograd::unique unique;
+  Local(::torch::autograd::unique unique)
     : unique(unique)
     {}
 };
@@ -350,6 +354,61 @@ struct Graph {
 };
 
 void printGraph(std::shared_ptr<Graph>, std::ostream& s);
+
+// --------------------------------------------------------------------
+// RnEnv
+
+
+
+// A renaming environment is used to remap local variables to fresh ones
+// when we are joining to environments.
+struct RnEnv {
+  std::unordered_map<unique, unique> env;
+  unique& unique_supply;
+
+  RnEnv(unique& unique_supply)
+    : unique_supply(unique_supply)
+    {};
+
+  // Remap a local number to a previously allocated fresh one
+  std::shared_ptr<Local> rename(std::shared_ptr<Local> l) {
+    auto r = env.find(l->unique);
+    if (r != env.end()) {
+      return std::make_shared<Local>(r->second);
+    } else {
+      std::cout << "looking for " << l->unique << "\nCurrent contents:\n";
+      for (auto pair : env) {
+        std::cout << pair.first << " -> " << pair.second << "\n";
+      }
+      throw std::logic_error("could not find unique");
+    }
+  }
+  local_list rename(local_list locals) {
+    local_list new_locals;
+    new_locals.reserve(locals.size());
+    for (auto l : locals) {
+      new_locals.push_back(rename(l));
+    }
+    return new_locals;
+  }
+
+  // Make a fresh variable for this local
+  std::shared_ptr<Local> fresh(std::shared_ptr<Local> l) {
+    auto u = unique_supply++;
+    env.insert({l->unique, u});
+    return std::make_shared<Local>(u);
+  }
+  local_list fresh(local_list locals) {
+    local_list new_locals;
+    new_locals.reserve(locals.size());
+    for (auto l : locals) {
+      new_locals.push_back(fresh(l));
+    }
+    return new_locals;
+  }
+};
+
+
 
 // --------------------------------------------------------------------
 // IR builder

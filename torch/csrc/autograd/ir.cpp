@@ -24,17 +24,20 @@ std::string getPythonName(const PyObject* obj, bool is_legacy) {
   }
 }
 
+
 // Calling convention:
 //    - Arguments are loaded into __t0, __t1, ... (to be changed soon)
 //    - Results are loaded into result0, result1, etc.
 class CudaPrinter : public ExprVisitor<CudaPrinter>, public OperatorVisitor<CudaPrinter> {
   std::ostream& s;
+  int unique_supply;
+  RnEnv rn_env;
 
 public:
-  CudaPrinter(std::ostream& s) : s(s) {}
+  CudaPrinter(std::ostream& s) : s(s), unique_supply(0), rn_env(unique_supply) {}
 
   void visitLocal(std::shared_ptr<Local> a) {
-    s << "__t" << a->unique;
+    s << "__t" << rn_env.rename(a)->unique;
   }
 
   // Operator
@@ -100,6 +103,7 @@ public:
     // Instruction
     for (auto l : e->bind.lvals) {
       // This is a special-case, needs to be generalized
+      rn_env.fresh(l);
       s << "float ";
       visitLocal(l);
       s << ";" << std::endl;
@@ -140,6 +144,7 @@ public:
   void visitGraph(std::shared_ptr<Graph> g) {
     int i = 0;
     for (auto l : g->params) {
+      rn_env.fresh(l);
       s << "float ";
       visitLocal(l);
       s << " = " << "input" << i << ";" << std::endl;

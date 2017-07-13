@@ -35,54 +35,6 @@ struct DefUses
   }
 };
 
-// A renaming environment is used to remap local variables to fresh ones
-// when we are joining to environments.
-struct RnEnv {
-  std::unordered_map<unique, unique> env;
-  unique& unique_supply;
-
-  RnEnv(unique& unique_supply)
-    : unique_supply(unique_supply)
-    {};
-
-  // Remap a local number to a previously allocated fresh one
-  std::shared_ptr<Local> rename(std::shared_ptr<Local> l) {
-    auto r = env.find(l->unique);
-    if (r != env.end()) {
-      return std::make_shared<Local>(r->second);
-    } else {
-      std::cout << "looking for " << l->unique << "\nCurrent contents:\n";
-      for (auto pair : env) {
-        std::cout << pair.first << " -> " << pair.second << "\n";
-      }
-      throw std::logic_error("could not find unique");
-    }
-  }
-  local_list rename(local_list locals) {
-    local_list new_locals;
-    new_locals.reserve(locals.size());
-    for (auto l : locals) {
-      new_locals.push_back(rename(l));
-    }
-    return new_locals;
-  }
-
-  // Make a fresh variable for this local
-  std::shared_ptr<Local> fresh(std::shared_ptr<Local> l) {
-    auto u = unique_supply++;
-    env.insert({l->unique, u});
-    return std::make_shared<Local>(u);
-  }
-  local_list fresh(local_list locals) {
-    local_list new_locals;
-    new_locals.reserve(locals.size());
-    for (auto l : locals) {
-      new_locals.push_back(fresh(l));
-    }
-    return new_locals;
-  }
-};
-
 // Single edge fuser.  Only works for SINGLE RETURN things (NOT CHECKED)
 //
 // Given
