@@ -215,6 +215,9 @@ struct Fuser
           // TODO: add check it's single output
           std::cout << l->unique << " sub_uses=" << sub_uses << "\n";
           if (sub_uses == 1 && sub_g != nullptr) {
+            // TODO: arguably, we should kill the rest of the outputs
+            // too when we know that they get folded into the map
+            killed.insert(l->unique);
             // This variable was used only once and we've removed
             // it's only usage, so kill it!
             // killed.insert(l->unique);
@@ -256,7 +259,18 @@ struct Fuser
       i++;
     }
     auto r = visitExpr(e->expr);
-    return std::make_shared<Let>(Bind(e->bind.lvals, inst), r);
+    bool all_killed = true;
+    for (auto l : e->bind.lvals) {
+      if (killed.count(l->unique) == 0) {
+        all_killed = false;
+        break;
+      }
+    }
+    if (all_killed) {
+      return r;
+    } else {
+      return std::make_shared<Let>(Bind(e->bind.lvals, inst), r);
+    }
   }
 
   std::shared_ptr<Graph> visitMapOp(std::shared_ptr<MapOp> o) {
