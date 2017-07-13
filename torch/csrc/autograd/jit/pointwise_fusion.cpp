@@ -205,54 +205,6 @@ std::shared_ptr<Graph> compose_at(std::shared_ptr<Graph> g1, std::shared_ptr<Gra
   //inline_graph(g2, );
 }
 
-struct Fuser
-  : public ExprVisitor<Fuser, void>
-  , public OperatorVisitor<Fuser, std::shared_ptr<Graph>>
-{
-  def_uses env;
-  Fuser(def_uses env)
-    : env(env)
-    {}
-  void visitTuple(std::shared_ptr<Tuple> e) {}
-  void visitLet(std::shared_ptr<Let> e) {
-    auto g = visitOperator(e->bind.rval->op);
-    if (g) {
-      auto insn = e->bind.rval;
-      // g will get updated with new graph
-      for (auto& l : e->bind.rval->args) {
-        // is single use
-        auto r = env[l->unique];
-        auto sub_insn   = std::get<0>(r);
-        auto sub_output = std::get<1>(r);
-        auto sub_uses   = std::get<2>(r);
-        auto sub_g = visitOperator(sub_insn->op);
-        if (sub_uses == 1 && sub_g != nullptr) {
-          // then inline it!
-          //
-          // f x y = ...
-          // g z = ...
-          //
-          // ...f (g z) y...
-
-          // generate mappings of g and sub_g renumberings.
-          // E.g., if we have
-          //    %2 = map (fn %1 => ret %1) %3
-          // Then we map %1 ==> %3
-          std::unordered_map<unique, unique> g_inner_to_outer;
-          std::unordered_map<unique, unique> sub_g_inner_to_outer;
-          for (auto& l : e->bind.rval->args) {
-          }
-        }
-      }
-    }
-  }
-
-  std::shared_ptr<Graph> visitMapOp(std::shared_ptr<MapOp> o) {
-    return o->fn;
-  }
-  std::shared_ptr<Graph> visitPrimOp(std::shared_ptr<PrimOp> o) {return nullptr;}
-  std::shared_ptr<Graph> visitPythonOp(std::shared_ptr<PythonOp> o) {return nullptr;}
-};
 */
 
 struct RnEnv {
@@ -342,9 +294,80 @@ struct FuseEdge2 : public ExprVisitor<FuseEdge2, std::shared_ptr<Expr>> {
   }
 };
 
-std::shared_ptr<Graph> fuse_edge(std::shared_ptr<Graph> g1, int g1_input, std::shared_ptr<Graph> g2, int g2_output) {
-  return nullptr;
+std::shared_ptr<Graph> fuse_edge(std::shared_ptr<Graph> g1, int g1_input, std::shared_ptr<Graph> g2, int g2_output, unique& unique_supply) {
+  return FuseEdge2(unique_supply, g1, g1_input, g2, g2_output).run();
 }
+
+
+
+struct Fuser
+  : public ExprVisitor<Fuser, std::shared_ptr<Expr>>
+  , public OperatorVisitor<Fuser, std::shared_ptr<Graph>>
+{
+  def_uses env;
+  unique& unique_supply;
+  Fuser(def_uses env, unique& unique_supply)
+    : env(env)
+    , unique_supply(unique_supply)
+    {}
+  std::shared_ptr<Expr> visitTuple(std::shared_ptr<Tuple> e) {
+    return e;
+  }
+  std::shared_ptr<Expr> visitLet(std::shared_ptr<Let> e) {
+    auto g = visitOperator(e->bind.rval->op);
+    std::shared_ptr<Instruction> inst;
+    if (g) {
+      // g is a map and so fusion could be
+      // profitable.  There may be multiple
+      // fusions available: we'll apply them
+      // one by one (fuse_edge.)
+      int i = 0;
+      local_list new_args = e->bind.rval->args;
+      for (int i = 0; i < g->params.size(); i++) {
+        auto l = g->params[i];
+        auto r = env[l->unique];
+        auto sub_insn   = std::get<0>(r);
+        auto sub_output = std::get<1>(r);
+        auto sub_uses   = std::get<2>(r);
+        auto sub_g = sub_insn ? visitOperator(sub_insn->op) : nullptr;
+        // TODO: add check it's single output
+        if (sub_uses == 1 && sub_g != nullptr) {
+          std::cout << "fusing!\n";
+          g = fuse_edge(g, i, sub_g, sub_output, unique_supply);
+          local_list new_new_args;
+          for (int j = 0; j < new_args.size(); j++) {
+            if (i == j) {
+              for (auto& l : sub_insn->args) {
+                new_new_args.push_back(l);
+              }
+            } else {
+              new_new_args.push_back(new_args[j]);
+            }
+          }
+          new_args = new_new_args;
+          i--; // redos everything!
+          //i += sub_g->params.size() - 1;
+        }
+      }
+      inst = std::make_shared<Instruction>(
+        std::make_shared<MapOp>(g),
+        new_args
+        );
+    } else {
+      inst = e->bind.rval;
+    }
+    auto r = visitExpr(e->expr);
+    return std::make_shared<Let>(Bind(e->bind.lvals, inst), r);
+  }
+
+  std::shared_ptr<Graph> visitMapOp(std::shared_ptr<MapOp> o) {
+    return o->fn;
+  }
+  std::shared_ptr<Graph> visitPrimOp(std::shared_ptr<PrimOp> o) {return nullptr;}
+  std::shared_ptr<Graph> visitPythonOp(std::shared_ptr<PythonOp> o) {return nullptr;}
+};
+
+
 
 
 std::shared_ptr<Expr> pointwise_fusion(std::shared_ptr<Expr> e, int& unique_supply) {
@@ -353,7 +376,7 @@ std::shared_ptr<Expr> pointwise_fusion(std::shared_ptr<Expr> e, int& unique_supp
   for (auto it : uses.env) {
     std::cout << "%" << it.first << " usage count: " << std::get<2>(it.second) << std::endl;
   }
-  return e;
+  return Fuser(uses.env, unique_supply).visitExpr(e);
 }
 
 }}
