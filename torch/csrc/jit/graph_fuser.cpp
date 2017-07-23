@@ -28,12 +28,12 @@ struct GraphFuser {
           // replaces the Select(PythonOp,0) with just SimpleMap(opname)
           auto new_op = graph->create<SimpleMap>(name,p->inputs());
           new_op->insertAfter(p);
-          JIT_ASSERT(1 == p->uses().size());
+          JIT_ASSERT(1 == p->uses().size()); // TODO (apaszke): Maybe this && it can be cast to Select?
           auto single_select = p->uses()[0].user;
           single_select->replaceAllUsesWith(new_op);
           single_select->eraseFromParent();
           //erasing p directly would invalidate iterator
-          it.eraseCurrentFromParent();
+          it.eraseCurrentFromParent(); // TODO (apaszke): so next iter will consider recently inserted SimpleMap, right?
         }
       }
     }

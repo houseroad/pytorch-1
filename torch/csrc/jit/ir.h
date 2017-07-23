@@ -184,7 +184,7 @@ public:
   const use_list & uses() {
     return uses_;
   }
-  
+
   // Replaces all uses of this node with 'newValue'.
   //
   // Precondition: 'newValue' must be topologically before all uses
@@ -220,7 +220,7 @@ public:
   //          %5 = h(%1)
   //          %4 = g(%3)
   void insertBefore(Node * n) {
-    JIT_ASSERT(n->inGraphList());
+    JIT_ASSERT(n->inGraphList()); // TODO (apaszke): should be !inGraphList()
     insertAfter(n->prev());
   }
   void insertAfter(Node * n) {
@@ -260,7 +260,7 @@ public:
   // useful for resuming a search starting at this node
   graph_node_list_iterator iterator();
   graph_node_list_iterator reverseIterator();
-  void eraseFromParent();
+  void eraseFromParent(); // TODO (apaszke): why from parent? what's a parent node?
   // dynamic cast: if(auto s = n.cast<Select>()) { ... }
   template<typename T>
   T* cast() {
@@ -294,11 +294,11 @@ private:
     return old_node;
   }
   bool inGraphList() {
-    return next() && prev();
+    return next() && prev(); // TODO (apaszke): maybe JIT_ASSERT(!(next() ^ prev())); return next();
   }
   void removeFromList() {
     JIT_ASSERT(inGraphList());
-    Node * next = this->next();
+    Node * next = this->next(); // TODO (apaszke): nit - no need to assign these to locals
     Node * prev = this->prev();
     prev->next() = next;
     next->prev() = prev;
@@ -404,11 +404,12 @@ protected:
   virtual Node * allocClone(Graph * in_graph);
 };
 
+// TODO (apaszke): maybe define traits for NodeKind?
 // helper to define simple primitive Ops.
 template<typename Self, NodeKind K>
 struct Primitive : public NodeWithKind<Self,K> {
   void init() {}
-  void init(ArrayRef<Node*> inputs) {
+  void init(ArrayRef<Node*> inputs) { // TODO (apaszke): do we really want to use ATen here?
     for(auto i : inputs)
       this->addInput(i);
   }
@@ -421,7 +422,7 @@ struct Return : public Primitive<Return,NodeKind::Return> {};
 
 // an input tensor to the graph
 struct Param : public NodeWithKind<Param,NodeKind::Param> {
-  void init() {}
+  void init() {} // TODO (apaszke): why is this necessary?
 };
 
 struct Graph {
@@ -440,10 +441,10 @@ private:
 
   // only used to keep track of allocated nodes
   // actual representation of Graph is done with
-  // inputs, outputs, nodes
+  // inputs, outputs, nodes // TODO (apaszke): nodes_ no longer exists
 
   //allows fast removal of nodes when they are deleted.
-  std::unordered_set<Node*> all_nodes;
+  std::unordered_set<Node*> all_nodes; // TODO (apaszke): is there any reason to not allocate Nodes as elements of this set? Unnecessary
   size_t next_unique;
 
 public:
@@ -636,6 +637,7 @@ struct PythonOp : public NodeWithKind<PythonOp,NodeKind::PythonOp> {
     this->is_legacy = is_legacy;
   }
   virtual void cloneFrom(PythonOp * other) override {
+      // TODO (apaszke): can't see how is that a problem? just incref them
     throw std::runtime_error("cannot clone PythonOp because of THPObjectPtr");
   }
 };
