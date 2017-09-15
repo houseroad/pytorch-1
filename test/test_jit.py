@@ -21,6 +21,25 @@ skipIfNoTorchVision = unittest.skipIf(not HAS_TORCHVISION, "no torchvision")
 class TestJit(TestCase):
     maxDiff = None
 
+    def test_print_ir(self):
+
+        x = Variable(torch.Tensor([0.4, 0.3]), requires_grad=True)
+        y = Variable(torch.Tensor([0.7, 0.5]), requires_grad=True)
+
+        trace = torch._C._tracer_enter((x, y), 0)
+        z = torch.sigmoid(torch.tanh(x * (x + y)))
+        torch._C._tracer_exit((z,))
+        print(str(trace))
+        torch._C._jit_pass_lint(trace)
+        print(str(trace))
+        torch._C._jit_pass_onnx(trace)
+        print(str(trace))
+        torch._C._jit_pass_lint(trace)
+        print(str(trace))
+        torch._C._jit_pass_cse(trace)
+        print(str(trace))
+
+
     def test_simple(self):
         x = Variable(torch.Tensor([0.4]), requires_grad=True)
         y = Variable(torch.Tensor([0.7]), requires_grad=True)
